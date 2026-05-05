@@ -2,6 +2,7 @@ import os
 import datetime
 import pytest
 from unittest.mock import patch, MagicMock
+from firefly_iii_client.exceptions import ApiException
 
 
 # ── Shared test helpers ────────────────────────────────────────────────────────
@@ -47,3 +48,79 @@ def test_firefly_client_raises_without_api_token():
         from tools import FireflyClient
         with pytest.raises(ValueError, match="FIREFLY_API_TOKEN"):
             FireflyClient(base_url="https://host/api")
+
+
+# ── Transaction read helpers ───────────────────────────────────────────────────
+
+def _mock_tx(tx_id="42", description="Groceries", amount="45.00"):
+    m = MagicMock()
+    m.to_dict.return_value = {
+        "id": tx_id,
+        "attributes": {"description": description, "amount": amount},
+    }
+    return m
+
+
+# ── list_transactions ──────────────────────────────────────────────────────────
+
+@patch("tools.TransactionsApi")
+def test_list_transactions_returns_list(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.list_transaction.return_value.data = [_mock_tx()]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "list_transactions", {"limit": 10})
+
+    assert "transactions" in result
+    assert len(result["transactions"]) == 1
+    assert result["transactions"][0]["id"] == "42"
+    mock_api.list_transaction.assert_called_once_with(limit=10, page=1)
+
+
+@patch("tools.TransactionsApi")
+def test_list_transactions_uses_default_params(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.list_transaction.return_value.data = []
+
+    from tools import dispatch
+    dispatch(_make_client(), "list_transactions", {})
+
+    mock_api.list_transaction.assert_called_once_with(limit=50, page=1)
+
+
+@patch("tools.TransactionsApi")
+def test_list_transactions_api_error_returns_error_dict(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.list_transaction.side_effect = ApiException(status=401, reason="Unauthorized")
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "list_transactions", {})
+
+    assert "error" in result
+
+
+# ── get_transactions_by_date_range ─────────────────────────────────────────────
+
+@patch("tools.TransactionsApi")
+def test_get_transactions_by_date_range(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.list_transaction.return_value.data = [_mock_tx("7", "Rent", "1200.00")]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "get_transactions_by_date_range", {
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-31",
+    })
+
+    assert "transactions" in result
+    assert result["transactions"][0]["id"] == "7"
+    mock_api.list_transaction.assert_called_once_with(
+        start=datetime.date(2024, 1, 1),
+        end=datetime.date(2024, 1, 31),
+        limit=50,
+        page=1,
+    )

@@ -124,3 +124,31 @@ def test_get_transactions_by_date_range(mock_api_class):
         limit=50,
         page=1,
     )
+
+
+# ── search_transactions ────────────────────────────────────────────────────────
+
+@patch("tools.SearchApi")
+def test_search_transactions(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.search_transactions.return_value.data = [_mock_tx("3", "Netflix subscription")]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "search_transactions", {"query": "netflix"})
+
+    assert "transactions" in result
+    assert result["transactions"][0]["attributes"]["description"] == "Netflix subscription"
+    mock_api.search_transactions.assert_called_once_with(query="netflix", limit=50, page=1)
+
+
+@patch("tools.SearchApi")
+def test_search_transactions_passes_limit_and_page(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.search_transactions.return_value.data = []
+
+    from tools import dispatch
+    dispatch(_make_client(), "search_transactions", {"query": "q", "limit": 5, "page": 2})
+
+    mock_api.search_transactions.assert_called_once_with(query="q", limit=5, page=2)

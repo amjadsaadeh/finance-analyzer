@@ -60,9 +60,23 @@ def _handler_get_transactions_by_date_range(client: FireflyClient, args: dict) -
         return {"error": str(e)}
 
 
+def _handler_search_transactions(client: FireflyClient, args: dict) -> dict:
+    api = SearchApi(client.api_client)
+    try:
+        resp = api.search_transactions(
+            query=args["query"],
+            limit=args.get("limit", 50),
+            page=args.get("page", 1),
+        )
+        return {"transactions": [t.to_dict() for t in resp.data]}
+    except ApiException as e:
+        return {"error": str(e)}
+
+
 _HANDLERS: dict = {
     "list_transactions": _handler_list_transactions,
     "get_transactions_by_date_range": _handler_get_transactions_by_date_range,
+    "search_transactions": _handler_search_transactions,
 }
 TOOLS: list = []
 

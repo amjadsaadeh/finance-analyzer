@@ -177,6 +177,30 @@ def _handler_get_income_insights(client: FireflyClient, args: dict) -> dict:
         return {"error": str(e)}
 
 
+def _handler_list_categories(client: FireflyClient, args: dict) -> dict:
+    api = CategoriesApi(client.api_client)
+    try:
+        resp = api.list_category(
+            limit=args.get("limit", 50),
+            page=args.get("page", 1),
+        )
+        return {"categories": [c.to_dict() for c in resp.data]}
+    except ApiException as e:
+        return {"error": str(e)}
+
+
+def _handler_list_tags(client: FireflyClient, args: dict) -> dict:
+    api = TagsApi(client.api_client)
+    try:
+        resp = api.list_tag(
+            limit=args.get("limit", 50),
+            page=args.get("page", 1),
+        )
+        return {"tags": [t.to_dict() for t in resp.data]}
+    except ApiException as e:
+        return {"error": str(e)}
+
+
 _HANDLERS: dict = {
     "list_transactions": _handler_list_transactions,
     "get_transactions_by_date_range": _handler_get_transactions_by_date_range,
@@ -186,6 +210,8 @@ _HANDLERS: dict = {
     "list_accounts": _handler_list_accounts,
     "get_expense_insights": _handler_get_expense_insights,
     "get_income_insights": _handler_get_income_insights,
+    "list_categories": _handler_list_categories,
+    "list_tags": _handler_list_tags,
 }
 TOOLS: list = []
 

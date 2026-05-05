@@ -343,3 +343,39 @@ def test_get_income_insights(mock_api_class):
         end=datetime.date(2024, 1, 31),
         accounts=None,
     )
+
+
+# ── list_categories ────────────────────────────────────────────────────────────
+
+@patch("tools.CategoriesApi")
+def test_list_categories(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_cat = MagicMock()
+    mock_cat.to_dict.return_value = {"id": "1", "attributes": {"name": "Groceries"}}
+    mock_api.list_category.return_value.data = [mock_cat]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "list_categories", {})
+
+    assert "categories" in result
+    assert result["categories"][0]["attributes"]["name"] == "Groceries"
+    mock_api.list_category.assert_called_once_with(limit=50, page=1)
+
+
+# ── list_tags ──────────────────────────────────────────────────────────────────
+
+@patch("tools.TagsApi")
+def test_list_tags(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_tag = MagicMock()
+    mock_tag.to_dict.return_value = {"id": "2", "attributes": {"tag": "weekly"}}
+    mock_api.list_tag.return_value.data = [mock_tag]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "list_tags", {})
+
+    assert "tags" in result
+    assert result["tags"][0]["attributes"]["tag"] == "weekly"
+    mock_api.list_tag.assert_called_once_with(limit=50, page=1)

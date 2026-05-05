@@ -124,12 +124,26 @@ def _handler_update_transaction_category(client: FireflyClient, args: dict) -> d
         return {"error": str(e)}
 
 
+def _handler_list_accounts(client: FireflyClient, args: dict) -> dict:
+    api = AccountsApi(client.api_client)
+    try:
+        resp = api.list_account(
+            limit=args.get("limit", 50),
+            page=args.get("page", 1),
+            type=args.get("account_type"),
+        )
+        return {"accounts": [a.to_dict() for a in resp.data]}
+    except ApiException as e:
+        return {"error": str(e)}
+
+
 _HANDLERS: dict = {
     "list_transactions": _handler_list_transactions,
     "get_transactions_by_date_range": _handler_get_transactions_by_date_range,
     "search_transactions": _handler_search_transactions,
     "update_transaction_tags": _handler_update_transaction_tags,
     "update_transaction_category": _handler_update_transaction_category,
+    "list_accounts": _handler_list_accounts,
 }
 TOOLS: list = []
 

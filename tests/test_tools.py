@@ -236,3 +236,36 @@ def test_update_transaction_category(mock_api_class):
     assert "id" in result
     mock_api.get_transaction.assert_called_once_with("8")
     assert mock_api.update_transaction.called
+
+
+# ── list_accounts ──────────────────────────────────────────────────────────────
+
+@patch("tools.AccountsApi")
+def test_list_accounts_returns_accounts(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_account = MagicMock()
+    mock_account.to_dict.return_value = {
+        "id": "1",
+        "attributes": {"name": "Checking", "current_balance": "1500.00", "type": "asset"},
+    }
+    mock_api.list_account.return_value.data = [mock_account]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "list_accounts", {})
+
+    assert "accounts" in result
+    assert result["accounts"][0]["attributes"]["name"] == "Checking"
+    mock_api.list_account.assert_called_once_with(limit=50, page=1, type=None)
+
+
+@patch("tools.AccountsApi")
+def test_list_accounts_with_type_filter(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.list_account.return_value.data = []
+
+    from tools import dispatch
+    dispatch(_make_client(), "list_accounts", {"account_type": "asset"})
+
+    mock_api.list_account.assert_called_once_with(limit=50, page=1, type="asset")

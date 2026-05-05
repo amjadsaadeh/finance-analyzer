@@ -152,7 +152,7 @@ def _handler_get_expense_insights(client: FireflyClient, args: dict) -> dict:
             end=end,
             accounts=args.get("account_ids"),
         )
-        return {"insights": [e.to_dict() for e in entries]}
+        return {"insights": [entry.to_dict() for entry in entries]}
     except ApiException as e:
         return {"error": str(e)}
 
@@ -172,7 +172,7 @@ def _handler_get_income_insights(client: FireflyClient, args: dict) -> dict:
             end=end,
             accounts=args.get("account_ids"),
         )
-        return {"insights": [e.to_dict() for e in entries]}
+        return {"insights": [entry.to_dict() for entry in entries]}
     except ApiException as e:
         return {"error": str(e)}
 
@@ -218,7 +218,7 @@ TOOLS: list = [
         "type": "function",
         "function": {
             "name": "list_transactions",
-            "description": "List transactions from Firefly III with optional filters.",
+            "description": "List transactions from Firefly III with optional filters. Results are paginated (default 50 per page); use the page parameter to retrieve subsequent pages.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -233,7 +233,7 @@ TOOLS: list = [
         "type": "function",
         "function": {
             "name": "get_transactions_by_date_range",
-            "description": "List transactions between start_date and end_date (YYYY-MM-DD format).",
+            "description": "List transactions between start_date and end_date (YYYY-MM-DD format). Results are paginated; increase page to retrieve more.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -306,7 +306,7 @@ TOOLS: list = [
                 "properties": {
                     "account_type": {
                         "type": "string",
-                        "description": "Filter by type: asset, expense, revenue, liability (optional)",
+                        "description": "Filter by account type, e.g. asset, expense, revenue, liability, cash, liabilities (optional — omit for all)",
                     },
                     "limit": {"type": "integer", "description": "Max results per page (default 50)"},
                     "page": {"type": "integer", "description": "Page number (default 1)"},

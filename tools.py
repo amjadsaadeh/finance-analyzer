@@ -16,7 +16,7 @@ from firefly_iii_client.exceptions import ApiException
 
 
 class FireflyClient:
-    def __init__(self, base_url: str = None, api_token: str = None):
+    def __init__(self, base_url: str | None = None, api_token: str | None = None):
         self.base_url = base_url or os.environ.get("FIREFLY_BASE_URL")
         self.api_token = api_token or os.environ.get("FIREFLY_API_TOKEN")
         if not self.base_url:

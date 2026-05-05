@@ -152,3 +152,87 @@ def test_search_transactions_passes_limit_and_page(mock_api_class):
     dispatch(_make_client(), "search_transactions", {"query": "q", "limit": 5, "page": 2})
 
     mock_api.search_transactions.assert_called_once_with(query="q", limit=5, page=2)
+
+
+# ── Transaction write helpers ──────────────────────────────────────────────────
+
+def _mock_existing_transaction(
+    description="Groceries",
+    amount=45.0,
+    category_name="Food",
+    tags=None,
+):
+    split = MagicMock()
+    split.description = description
+    split.date = datetime.date(2024, 3, 15)
+    split.amount = amount
+    split.type = "withdrawal"
+    split.category_name = category_name
+    split.tags = tags or []
+    split.source_id = 1
+    split.destination_id = 2
+
+    existing = MagicMock()
+    existing.data.attributes.transactions = [split]
+    return existing
+
+
+# ── update_transaction_tags ────────────────────────────────────────────────────
+
+@patch("tools.TransactionsApi")
+def test_update_transaction_tags_calls_get_then_update(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.get_transaction.return_value = _mock_existing_transaction()
+    mock_api.update_transaction.return_value.data.to_dict.return_value = {
+        "id": "5", "attributes": {"tags": ["food", "weekly"]}
+    }
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "update_transaction_tags", {
+        "transaction_id": "5",
+        "tags": ["food", "weekly"],
+    })
+
+    assert "id" in result
+    mock_api.get_transaction.assert_called_once_with("5")
+    assert mock_api.update_transaction.called
+    call_id = mock_api.update_transaction.call_args[0][0]
+    assert call_id == "5"
+
+
+@patch("tools.TransactionsApi")
+def test_update_transaction_tags_api_error(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.get_transaction.side_effect = ApiException(status=404, reason="Not Found")
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "update_transaction_tags", {
+        "transaction_id": "99",
+        "tags": ["x"],
+    })
+
+    assert "error" in result
+
+
+# ── update_transaction_category ────────────────────────────────────────────────
+
+@patch("tools.TransactionsApi")
+def test_update_transaction_category(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.get_transaction.return_value = _mock_existing_transaction(tags=["existing-tag"])
+    mock_api.update_transaction.return_value.data.to_dict.return_value = {
+        "id": "8", "attributes": {"category_name": "Transport"}
+    }
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "update_transaction_category", {
+        "transaction_id": "8",
+        "category_name": "Transport",
+    })
+
+    assert "id" in result
+    mock_api.get_transaction.assert_called_once_with("8")
+    assert mock_api.update_transaction.called

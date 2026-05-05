@@ -77,10 +77,59 @@ def _handler_search_transactions(client: FireflyClient, args: dict) -> dict:
         return {"error": str(e)}
 
 
+def _build_split_update(split, *, tags=None, category_name=None) -> TransactionSplitUpdate:
+    return TransactionSplitUpdate(
+        description=split.description,
+        date=split.date,
+        amount=str(split.amount),
+        type=split.type,
+        tags=tags if tags is not None else split.tags,
+        category_name=category_name if category_name is not None else split.category_name,
+        source_id=str(split.source_id) if split.source_id else None,
+        destination_id=str(split.destination_id) if split.destination_id else None,
+    )
+
+
+def _handler_update_transaction_tags(client: FireflyClient, args: dict) -> dict:
+    api = TransactionsApi(client.api_client)
+    try:
+        tx_id = str(args["transaction_id"])
+        tags = args["tags"]
+    except KeyError as e:
+        return {"error": f"Missing required argument: {e}"}
+    try:
+        existing = api.get_transaction(tx_id)
+        splits = existing.data.attributes.transactions
+        updated = [_build_split_update(s, tags=tags) for s in splits]
+        result = api.update_transaction(tx_id, TransactionUpdate(transactions=updated))
+        return result.data.to_dict()
+    except ApiException as e:
+        return {"error": str(e)}
+
+
+def _handler_update_transaction_category(client: FireflyClient, args: dict) -> dict:
+    api = TransactionsApi(client.api_client)
+    try:
+        tx_id = str(args["transaction_id"])
+        category_name = args["category_name"]
+    except KeyError as e:
+        return {"error": f"Missing required argument: {e}"}
+    try:
+        existing = api.get_transaction(tx_id)
+        splits = existing.data.attributes.transactions
+        updated = [_build_split_update(s, category_name=category_name) for s in splits]
+        result = api.update_transaction(tx_id, TransactionUpdate(transactions=updated))
+        return result.data.to_dict()
+    except ApiException as e:
+        return {"error": str(e)}
+
+
 _HANDLERS: dict = {
     "list_transactions": _handler_list_transactions,
     "get_transactions_by_date_range": _handler_get_transactions_by_date_range,
     "search_transactions": _handler_search_transactions,
+    "update_transaction_tags": _handler_update_transaction_tags,
+    "update_transaction_category": _handler_update_transaction_category,
 }
 TOOLS: list = []
 

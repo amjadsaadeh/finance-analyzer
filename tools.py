@@ -213,7 +213,179 @@ _HANDLERS: dict = {
     "list_categories": _handler_list_categories,
     "list_tags": _handler_list_tags,
 }
-TOOLS: list = []
+TOOLS: list = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_transactions",
+            "description": "List transactions from Firefly III with optional filters.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
+                    "page": {"type": "integer", "description": "Page number (default 1)"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_transactions_by_date_range",
+            "description": "List transactions between start_date and end_date (YYYY-MM-DD format).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start date in YYYY-MM-DD format"},
+                    "end_date": {"type": "string", "description": "End date in YYYY-MM-DD format"},
+                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
+                    "page": {"type": "integer", "description": "Page number (default 1)"},
+                },
+                "required": ["start_date", "end_date"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_transactions",
+            "description": "Full-text search across transaction descriptions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query string"},
+                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
+                    "page": {"type": "integer", "description": "Page number (default 1)"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_transaction_tags",
+            "description": "Replace all tags on a transaction with a new list of tags.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transaction_id": {"type": "string", "description": "ID of the transaction"},
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "New list of tags (replaces existing tags)",
+                    },
+                },
+                "required": ["transaction_id", "tags"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_transaction_category",
+            "description": "Set the category on a transaction.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transaction_id": {"type": "string", "description": "ID of the transaction"},
+                    "category_name": {"type": "string", "description": "Category name to assign"},
+                },
+                "required": ["transaction_id", "category_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_accounts",
+            "description": "List all accounts with their current balances.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "account_type": {
+                        "type": "string",
+                        "description": "Filter by type: asset, expense, revenue, liability (optional)",
+                    },
+                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
+                    "page": {"type": "integer", "description": "Page number (default 1)"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_expense_insights",
+            "description": "Get expense totals grouped by category for a date range.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start date in YYYY-MM-DD format"},
+                    "end_date": {"type": "string", "description": "End date in YYYY-MM-DD format"},
+                    "account_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Filter by account IDs (optional)",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_income_insights",
+            "description": "Get income totals grouped by category for a date range.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start date in YYYY-MM-DD format"},
+                    "end_date": {"type": "string", "description": "End date in YYYY-MM-DD format"},
+                    "account_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Filter by account IDs (optional)",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_categories",
+            "description": "List all transaction categories.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
+                    "page": {"type": "integer", "description": "Page number (default 1)"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_tags",
+            "description": "List all transaction tags.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
+                    "page": {"type": "integer", "description": "Page number (default 1)"},
+                },
+                "required": [],
+            },
+        },
+    },
+]
 
 
 def dispatch(client: FireflyClient, tool_name: str, args: dict) -> dict:

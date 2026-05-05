@@ -379,3 +379,46 @@ def test_list_tags(mock_api_class):
     assert "tags" in result
     assert result["tags"][0]["attributes"]["tag"] == "weekly"
     mock_api.list_tag.assert_called_once_with(limit=50, page=1)
+
+
+# ── TOOLS / dispatch / get_tools ───────────────────────────────────────────────
+
+def test_get_tools_returns_10_tools():
+    from tools import get_tools
+    assert len(get_tools()) == 10
+
+
+def test_get_tools_names_match_handlers():
+    from tools import get_tools
+    names = {t["function"]["name"] for t in get_tools()}
+    assert names == {
+        "list_transactions",
+        "get_transactions_by_date_range",
+        "search_transactions",
+        "update_transaction_tags",
+        "update_transaction_category",
+        "list_accounts",
+        "get_expense_insights",
+        "get_income_insights",
+        "list_categories",
+        "list_tags",
+    }
+
+
+def test_get_tools_each_has_valid_openai_schema():
+    from tools import get_tools
+    for tool in get_tools():
+        assert tool["type"] == "function"
+        fn = tool["function"]
+        assert "name" in fn
+        assert "description" in fn
+        params = fn["parameters"]
+        assert params["type"] == "object"
+        assert "properties" in params
+        assert "required" in params
+
+
+def test_dispatch_unknown_tool():
+    from tools import dispatch
+    result = dispatch(_make_client(), "no_such_tool", {})
+    assert result == {"error": "Unknown tool: no_such_tool"}

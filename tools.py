@@ -63,8 +63,12 @@ def _handler_get_transactions_by_date_range(client: FireflyClient, args: dict) -
 def _handler_search_transactions(client: FireflyClient, args: dict) -> dict:
     api = SearchApi(client.api_client)
     try:
+        query = args["query"]
+    except KeyError as e:
+        return {"error": f"Missing required argument: {e}"}
+    try:
         resp = api.search_transactions(
-            query=args["query"],
+            query=query,
             limit=args.get("limit", 50),
             page=args.get("page", 1),
         )

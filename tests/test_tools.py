@@ -269,3 +269,77 @@ def test_list_accounts_with_type_filter(mock_api_class):
     dispatch(_make_client(), "list_accounts", {"account_type": "asset"})
 
     mock_api.list_account.assert_called_once_with(limit=50, page=1, type="asset")
+
+
+# ── get_expense_insights ───────────────────────────────────────────────────────
+
+@patch("tools.InsightApi")
+def test_get_expense_insights(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_entry = MagicMock()
+    mock_entry.to_dict.return_value = {
+        "id": "3", "name": "Groceries", "difference": "-450.00", "currency_code": "EUR"
+    }
+    mock_api.insight_expense_category.return_value = [mock_entry]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "get_expense_insights", {
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-31",
+    })
+
+    assert "insights" in result
+    assert result["insights"][0]["name"] == "Groceries"
+    mock_api.insight_expense_category.assert_called_once_with(
+        start=datetime.date(2024, 1, 1),
+        end=datetime.date(2024, 1, 31),
+        accounts=None,
+    )
+
+
+@patch("tools.InsightApi")
+def test_get_expense_insights_with_account_filter(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.insight_expense_category.return_value = []
+
+    from tools import dispatch
+    dispatch(_make_client(), "get_expense_insights", {
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-31",
+        "account_ids": [1, 2],
+    })
+
+    mock_api.insight_expense_category.assert_called_once_with(
+        start=datetime.date(2024, 1, 1),
+        end=datetime.date(2024, 1, 31),
+        accounts=[1, 2],
+    )
+
+
+# ── get_income_insights ────────────────────────────────────────────────────────
+
+@patch("tools.InsightApi")
+def test_get_income_insights(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_entry = MagicMock()
+    mock_entry.to_dict.return_value = {
+        "id": "1", "name": "Salary", "difference": "3000.00", "currency_code": "EUR"
+    }
+    mock_api.insight_income_category.return_value = [mock_entry]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "get_income_insights", {
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-31",
+    })
+
+    assert "insights" in result
+    assert result["insights"][0]["name"] == "Salary"
+    mock_api.insight_income_category.assert_called_once_with(
+        start=datetime.date(2024, 1, 1),
+        end=datetime.date(2024, 1, 31),
+        accounts=None,
+    )

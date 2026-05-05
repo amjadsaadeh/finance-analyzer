@@ -137,6 +137,46 @@ def _handler_list_accounts(client: FireflyClient, args: dict) -> dict:
         return {"error": str(e)}
 
 
+def _handler_get_expense_insights(client: FireflyClient, args: dict) -> dict:
+    api = InsightApi(client.api_client)
+    try:
+        start = datetime.date.fromisoformat(args["start_date"])
+        end = datetime.date.fromisoformat(args["end_date"])
+    except KeyError as e:
+        return {"error": f"Missing required argument: {e}"}
+    except ValueError as e:
+        return {"error": f"Invalid date format: {e}"}
+    try:
+        entries = api.insight_expense_category(
+            start=start,
+            end=end,
+            accounts=args.get("account_ids"),
+        )
+        return {"insights": [e.to_dict() for e in entries]}
+    except ApiException as e:
+        return {"error": str(e)}
+
+
+def _handler_get_income_insights(client: FireflyClient, args: dict) -> dict:
+    api = InsightApi(client.api_client)
+    try:
+        start = datetime.date.fromisoformat(args["start_date"])
+        end = datetime.date.fromisoformat(args["end_date"])
+    except KeyError as e:
+        return {"error": f"Missing required argument: {e}"}
+    except ValueError as e:
+        return {"error": f"Invalid date format: {e}"}
+    try:
+        entries = api.insight_income_category(
+            start=start,
+            end=end,
+            accounts=args.get("account_ids"),
+        )
+        return {"insights": [e.to_dict() for e in entries]}
+    except ApiException as e:
+        return {"error": str(e)}
+
+
 _HANDLERS: dict = {
     "list_transactions": _handler_list_transactions,
     "get_transactions_by_date_range": _handler_get_transactions_by_date_range,
@@ -144,6 +184,8 @@ _HANDLERS: dict = {
     "update_transaction_tags": _handler_update_transaction_tags,
     "update_transaction_category": _handler_update_transaction_category,
     "list_accounts": _handler_list_accounts,
+    "get_expense_insights": _handler_get_expense_insights,
+    "get_income_insights": _handler_get_income_insights,
 }
 TOOLS: list = []
 

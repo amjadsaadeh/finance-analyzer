@@ -44,6 +44,11 @@ def _handler_get_transactions_by_date_range(client: FireflyClient, args: dict) -
     try:
         start = datetime.date.fromisoformat(args["start_date"])
         end = datetime.date.fromisoformat(args["end_date"])
+    except KeyError as e:
+        return {"error": f"Missing required argument: {e}"}
+    except ValueError as e:
+        return {"error": f"Invalid date format: {e}"}
+    try:
         resp = api.list_transaction(
             start=start,
             end=end,

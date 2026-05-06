@@ -28,12 +28,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User asks about spending patterns or specific categories, and the LLM routes to the correct Firefly III tools — all numbers come from tool calls, never from LLM calculation
   4. When the LLM proposes a data modification (tag, category), user sees a preview of changes and must explicitly confirm before anything is applied
   5. When API calls fail or data is missing, user sees a natural language explanation instead of a stack trace or raw error
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md — Agent definition with system prompt and 13 function tools wrapping dispatch()
+- [ ] 01-02-PLAN.md — FastAPI chat server with SSE streaming, sessions, and approval flow
+- [ ] 01-03-PLAN.md — Chat frontend UI, uvicorn entry point, and end-to-end integration
 
 ### Phase 2: Auto-Categorization & Learning
 **Goal**: Users can auto-categorize uncategorized transactions and teach the system through corrections that re-evaluate categorization patterns rather than rigidly memorizing
@@ -70,6 +70,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Agent Core & Chat Interface | 0/? | Not started | - |
+| 1. Agent Core & Chat Interface | 0/3 | Ready to execute | - |
 | 2. Auto-Categorization & Learning | 0/? | Not started | - |
 | 3. Narrative Savings Reports | 0/? | Not started | - |

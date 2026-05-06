@@ -70,6 +70,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Agent Core & Chat Interface | 0/3 | Ready to execute | - |
+| 1. Agent Core & Chat Interface | 0/3 | Planned | - |
 | 2. Auto-Categorization & Learning | 0/? | Not started | - |
 | 3. Narrative Savings Reports | 0/? | Not started | - |

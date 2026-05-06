@@ -1,6 +1,9 @@
 import os
 import datetime
 
+from pydantic import BaseModel, Field
+from openai import pydantic_function_tool
+
 from firefly_iii_client.configuration import Configuration
 from firefly_iii_client import ApiClient
 from firefly_iii_client.api import (
@@ -16,6 +19,12 @@ from firefly_iii_client.exceptions import ApiException
 
 
 class FireflyClient:
+    """Thin wrapper around the Firefly III ApiClient, configured from env vars or explicit args.
+
+    Config precedence: constructor arguments > environment variables
+    (``FIREFLY_BASE_URL``, ``FIREFLY_API_TOKEN``).
+    """
+
     def __init__(self, base_url: str | None = None, api_token: str | None = None):
         self.base_url = base_url or os.environ.get("FIREFLY_BASE_URL")
         self.api_token = api_token or os.environ.get("FIREFLY_API_TOKEN")
@@ -27,7 +36,114 @@ class FireflyClient:
         self.api_client = ApiClient(configuration=config)
 
 
+# --- Tool parameter schemas ---------------------------------------------------
+
+
+class ListTransactions(BaseModel):
+    """List transactions from Firefly III. Results are paginated (default 50 per page); use the page parameter to retrieve subsequent pages."""
+
+    limit: int = Field(50, description="Max results per page (default 50)")
+    page: int = Field(1, description="Page number (default 1)")
+
+
+class GetTransactionsByDateRange(BaseModel):
+    """List transactions between start_date and end_date (YYYY-MM-DD format). Results are paginated; increase page to retrieve more."""
+
+    start_date: str = Field(..., description="Start date in YYYY-MM-DD format")
+    end_date: str = Field(..., description="End date in YYYY-MM-DD format")
+    limit: int = Field(50, description="Max results per page (default 50)")
+    page: int = Field(1, description="Page number (default 1)")
+
+
+class SearchTransactions(BaseModel):
+    """Full-text search across transaction descriptions."""
+
+    query: str = Field(..., description="Search query string")
+    limit: int = Field(50, description="Max results per page (default 50)")
+    page: int = Field(1, description="Page number (default 1)")
+
+
+class UpdateTransactionTags(BaseModel):
+    """Replace all tags on a transaction with a new list of tags."""
+
+    transaction_id: str = Field(..., description="ID of the transaction")
+    tags: list[str] = Field(..., description="New list of tags (replaces existing tags)")
+
+
+class UpdateTransactionCategory(BaseModel):
+    """Set the category on a transaction."""
+
+    transaction_id: str = Field(..., description="ID of the transaction")
+    category_name: str = Field(..., description="Category name to assign")
+
+
+class ListAccounts(BaseModel):
+    """List all accounts with their current balances."""
+
+    account_type: str | None = Field(
+        None,
+        description="Filter by account type, e.g. asset, expense, revenue, liability, cash, liabilities (optional — omit for all)",
+    )
+    limit: int = Field(50, description="Max results per page (default 50)")
+    page: int = Field(1, description="Page number (default 1)")
+
+
+class GetExpenseInsights(BaseModel):
+    """Get expense totals grouped by category for a date range."""
+
+    start_date: str = Field(..., description="Start date in YYYY-MM-DD format")
+    end_date: str = Field(..., description="End date in YYYY-MM-DD format")
+    account_ids: list[int] | None = Field(None, description="Filter by account IDs (optional)")
+
+
+class GetIncomeInsights(BaseModel):
+    """Get income totals grouped by category for a date range."""
+
+    start_date: str = Field(..., description="Start date in YYYY-MM-DD format")
+    end_date: str = Field(..., description="End date in YYYY-MM-DD format")
+    account_ids: list[int] | None = Field(None, description="Filter by account IDs (optional)")
+
+
+class ListCategories(BaseModel):
+    """List all transaction categories."""
+
+    limit: int = Field(50, description="Max results per page (default 50)")
+    page: int = Field(1, description="Page number (default 1)")
+
+
+class ListTags(BaseModel):
+    """List all transaction tags."""
+
+    limit: int = Field(50, description="Max results per page (default 50)")
+    page: int = Field(1, description="Page number (default 1)")
+
+
+TOOLS: list = [
+    pydantic_function_tool(ListTransactions, name="list_transactions"),
+    pydantic_function_tool(GetTransactionsByDateRange, name="get_transactions_by_date_range"),
+    pydantic_function_tool(SearchTransactions, name="search_transactions"),
+    pydantic_function_tool(UpdateTransactionTags, name="update_transaction_tags"),
+    pydantic_function_tool(UpdateTransactionCategory, name="update_transaction_category"),
+    pydantic_function_tool(ListAccounts, name="list_accounts"),
+    pydantic_function_tool(GetExpenseInsights, name="get_expense_insights"),
+    pydantic_function_tool(GetIncomeInsights, name="get_income_insights"),
+    pydantic_function_tool(ListCategories, name="list_categories"),
+    pydantic_function_tool(ListTags, name="list_tags"),
+]
+
+
+# --- Handlers -----------------------------------------------------------------
+
+
 def _handler_list_transactions(client: FireflyClient, args: dict) -> dict:
+    """Return a paginated list of transactions.
+
+    Args:
+        args: Optional keys: ``limit`` (int, default 50), ``page`` (int, default 1).
+
+    Returns:
+        ``{"transactions": [...]}`` or ``{"error": "..."}`` on API failure.
+    """
     api = TransactionsApi(client.api_client)
     try:
         resp = api.list_transaction(
@@ -40,6 +156,15 @@ def _handler_list_transactions(client: FireflyClient, args: dict) -> dict:
 
 
 def _handler_get_transactions_by_date_range(client: FireflyClient, args: dict) -> dict:
+    """Return transactions whose date falls within [start_date, end_date].
+
+    Args:
+        args: Required keys: ``start_date``, ``end_date`` (YYYY-MM-DD strings).
+              Optional: ``limit`` (int, default 50), ``page`` (int, default 1).
+
+    Returns:
+        ``{"transactions": [...]}`` or ``{"error": "..."}`` on bad args or API failure.
+    """
     api = TransactionsApi(client.api_client)
     try:
         start = datetime.date.fromisoformat(args["start_date"])
@@ -61,6 +186,15 @@ def _handler_get_transactions_by_date_range(client: FireflyClient, args: dict) -
 
 
 def _handler_search_transactions(client: FireflyClient, args: dict) -> dict:
+    """Full-text search across transaction descriptions.
+
+    Args:
+        args: Required key: ``query`` (str).
+              Optional: ``limit`` (int, default 50), ``page`` (int, default 1).
+
+    Returns:
+        ``{"transactions": [...]}`` or ``{"error": "..."}`` on bad args or API failure.
+    """
     api = SearchApi(client.api_client)
     try:
         query = args["query"]
@@ -78,6 +212,11 @@ def _handler_search_transactions(client: FireflyClient, args: dict) -> dict:
 
 
 def _build_split_update(split, *, tags=None, category_name=None) -> TransactionSplitUpdate:
+    """Build a TransactionSplitUpdate from an existing split, overriding tags and/or category.
+
+    Preserves all required fields (description, date, amount, type, source/destination IDs)
+    so the PUT request doesn't accidentally clear them.
+    """
     return TransactionSplitUpdate(
         description=split.description,
         date=split.date,
@@ -91,6 +230,16 @@ def _build_split_update(split, *, tags=None, category_name=None) -> TransactionS
 
 
 def _handler_update_transaction_tags(client: FireflyClient, args: dict) -> dict:
+    """Replace all tags on a transaction with a new list.
+
+    Fetches the existing transaction first so all split fields are preserved during the PUT.
+
+    Args:
+        args: Required keys: ``transaction_id`` (str), ``tags`` (list[str]).
+
+    Returns:
+        Updated transaction data dict or ``{"error": "..."}`` on bad args or API failure.
+    """
     api = TransactionsApi(client.api_client)
     try:
         tx_id = str(args["transaction_id"])
@@ -108,6 +257,16 @@ def _handler_update_transaction_tags(client: FireflyClient, args: dict) -> dict:
 
 
 def _handler_update_transaction_category(client: FireflyClient, args: dict) -> dict:
+    """Set the category on a transaction.
+
+    Fetches the existing transaction first so all split fields are preserved during the PUT.
+
+    Args:
+        args: Required keys: ``transaction_id`` (str), ``category_name`` (str).
+
+    Returns:
+        Updated transaction data dict or ``{"error": "..."}`` on bad args or API failure.
+    """
     api = TransactionsApi(client.api_client)
     try:
         tx_id = str(args["transaction_id"])
@@ -125,6 +284,15 @@ def _handler_update_transaction_category(client: FireflyClient, args: dict) -> d
 
 
 def _handler_list_accounts(client: FireflyClient, args: dict) -> dict:
+    """List accounts with their current balances.
+
+    Args:
+        args: Optional keys: ``account_type`` (str, e.g. "asset", "expense", "revenue"),
+              ``limit`` (int, default 50), ``page`` (int, default 1).
+
+    Returns:
+        ``{"accounts": [...]}`` or ``{"error": "..."}`` on API failure.
+    """
     api = AccountsApi(client.api_client)
     try:
         resp = api.list_account(
@@ -138,6 +306,15 @@ def _handler_list_accounts(client: FireflyClient, args: dict) -> dict:
 
 
 def _handler_get_expense_insights(client: FireflyClient, args: dict) -> dict:
+    """Return expense totals grouped by category for a date range.
+
+    Args:
+        args: Required keys: ``start_date``, ``end_date`` (YYYY-MM-DD strings).
+              Optional: ``account_ids`` (list[int]) to restrict to specific accounts.
+
+    Returns:
+        ``{"insights": [...]}`` or ``{"error": "..."}`` on bad args or API failure.
+    """
     api = InsightApi(client.api_client)
     try:
         start = datetime.date.fromisoformat(args["start_date"])
@@ -158,6 +335,15 @@ def _handler_get_expense_insights(client: FireflyClient, args: dict) -> dict:
 
 
 def _handler_get_income_insights(client: FireflyClient, args: dict) -> dict:
+    """Return income totals grouped by category for a date range.
+
+    Args:
+        args: Required keys: ``start_date``, ``end_date`` (YYYY-MM-DD strings).
+              Optional: ``account_ids`` (list[int]) to restrict to specific accounts.
+
+    Returns:
+        ``{"insights": [...]}`` or ``{"error": "..."}`` on bad args or API failure.
+    """
     api = InsightApi(client.api_client)
     try:
         start = datetime.date.fromisoformat(args["start_date"])
@@ -178,6 +364,14 @@ def _handler_get_income_insights(client: FireflyClient, args: dict) -> dict:
 
 
 def _handler_list_categories(client: FireflyClient, args: dict) -> dict:
+    """List all transaction categories.
+
+    Args:
+        args: Optional keys: ``limit`` (int, default 50), ``page`` (int, default 1).
+
+    Returns:
+        ``{"categories": [...]}`` or ``{"error": "..."}`` on API failure.
+    """
     api = CategoriesApi(client.api_client)
     try:
         resp = api.list_category(
@@ -190,6 +384,14 @@ def _handler_list_categories(client: FireflyClient, args: dict) -> dict:
 
 
 def _handler_list_tags(client: FireflyClient, args: dict) -> dict:
+    """List all transaction tags.
+
+    Args:
+        args: Optional keys: ``limit`` (int, default 50), ``page`` (int, default 1).
+
+    Returns:
+        ``{"tags": [...]}`` or ``{"error": "..."}`` on API failure.
+    """
     api = TagsApi(client.api_client)
     try:
         resp = api.list_tag(
@@ -213,182 +415,19 @@ _HANDLERS: dict = {
     "list_categories": _handler_list_categories,
     "list_tags": _handler_list_tags,
 }
-TOOLS: list = [
-    {
-        "type": "function",
-        "function": {
-            "name": "list_transactions",
-            "description": "List transactions from Firefly III with optional filters. Results are paginated (default 50 per page); use the page parameter to retrieve subsequent pages.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
-                    "page": {"type": "integer", "description": "Page number (default 1)"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_transactions_by_date_range",
-            "description": "List transactions between start_date and end_date (YYYY-MM-DD format). Results are paginated; increase page to retrieve more.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "start_date": {"type": "string", "description": "Start date in YYYY-MM-DD format"},
-                    "end_date": {"type": "string", "description": "End date in YYYY-MM-DD format"},
-                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
-                    "page": {"type": "integer", "description": "Page number (default 1)"},
-                },
-                "required": ["start_date", "end_date"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_transactions",
-            "description": "Full-text search across transaction descriptions.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query string"},
-                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
-                    "page": {"type": "integer", "description": "Page number (default 1)"},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_transaction_tags",
-            "description": "Replace all tags on a transaction with a new list of tags.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "transaction_id": {"type": "string", "description": "ID of the transaction"},
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "New list of tags (replaces existing tags)",
-                    },
-                },
-                "required": ["transaction_id", "tags"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_transaction_category",
-            "description": "Set the category on a transaction.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "transaction_id": {"type": "string", "description": "ID of the transaction"},
-                    "category_name": {"type": "string", "description": "Category name to assign"},
-                },
-                "required": ["transaction_id", "category_name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_accounts",
-            "description": "List all accounts with their current balances.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "account_type": {
-                        "type": "string",
-                        "description": "Filter by account type, e.g. asset, expense, revenue, liability, cash, liabilities (optional — omit for all)",
-                    },
-                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
-                    "page": {"type": "integer", "description": "Page number (default 1)"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_expense_insights",
-            "description": "Get expense totals grouped by category for a date range.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "start_date": {"type": "string", "description": "Start date in YYYY-MM-DD format"},
-                    "end_date": {"type": "string", "description": "End date in YYYY-MM-DD format"},
-                    "account_ids": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Filter by account IDs (optional)",
-                    },
-                },
-                "required": ["start_date", "end_date"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_income_insights",
-            "description": "Get income totals grouped by category for a date range.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "start_date": {"type": "string", "description": "Start date in YYYY-MM-DD format"},
-                    "end_date": {"type": "string", "description": "End date in YYYY-MM-DD format"},
-                    "account_ids": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Filter by account IDs (optional)",
-                    },
-                },
-                "required": ["start_date", "end_date"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_categories",
-            "description": "List all transaction categories.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
-                    "page": {"type": "integer", "description": "Page number (default 1)"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_tags",
-            "description": "List all transaction tags.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "description": "Max results per page (default 50)"},
-                    "page": {"type": "integer", "description": "Page number (default 1)"},
-                },
-                "required": [],
-            },
-        },
-    },
-]
 
 
 def dispatch(client: FireflyClient, tool_name: str, args: dict) -> dict:
+    """Route a tool call to its handler and return the result.
+
+    Args:
+        client: Authenticated FireflyClient instance.
+        tool_name: Name of the tool to invoke (must match a key in ``_HANDLERS``).
+        args: Parsed tool arguments dict (from ``json.loads(tool_call.function.arguments)``).
+
+    Returns:
+        Handler result dict, or ``{"error": "Unknown tool: <name>"}`` for unknown tools.
+    """
     handler = _HANDLERS.get(tool_name)
     if handler is None:
         return {"error": f"Unknown tool: {tool_name}"}
@@ -396,4 +435,8 @@ def dispatch(client: FireflyClient, tool_name: str, args: dict) -> dict:
 
 
 def get_tools() -> list:
+    """Return the list of OpenAI function-calling tool schemas.
+
+    Pass the result directly to ``openai.chat.completions.create(tools=get_tools())``.
+    """
     return TOOLS

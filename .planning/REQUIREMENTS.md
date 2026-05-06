@@ -68,22 +68,22 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CHAT-01 | Phase 1 | Pending |
-| CHAT-02 | Phase 1 | Pending |
-| CHAT-03 | Phase 1 | Pending |
-| CHAT-04 | Phase 1 | Pending |
-| TOOL-01 | Phase 1 | Pending |
-| TOOL-02 | Phase 1 | Pending |
-| TOOL-03 | Phase 1 | Pending |
-| TOOL-04 | Phase 1 | Pending |
-| CAT-01 | Phase 2 | Pending |
-| CAT-02 | Phase 2 | Pending |
-| CAT-03 | Phase 2 | Pending |
-| RPT-01 | Phase 3 | Pending |
-| RPT-02 | Phase 3 | Pending |
-| RPT-03 | Phase 3 | Pending |
-| SAFE-01 | Phase 1 | Pending |
-| SAFE-02 | Phase 1 | Pending |
+| CHAT-01 | Phase 1: Agent Core & Chat Interface | Pending |
+| CHAT-02 | Phase 1: Agent Core & Chat Interface | Pending |
+| CHAT-03 | Phase 1: Agent Core & Chat Interface | Pending |
+| CHAT-04 | Phase 1: Agent Core & Chat Interface | Pending |
+| TOOL-01 | Phase 1: Agent Core & Chat Interface | Pending |
+| TOOL-02 | Phase 1: Agent Core & Chat Interface | Pending |
+| TOOL-03 | Phase 1: Agent Core & Chat Interface | Pending |
+| TOOL-04 | Phase 1: Agent Core & Chat Interface | Pending |
+| SAFE-01 | Phase 1: Agent Core & Chat Interface | Pending |
+| SAFE-02 | Phase 1: Agent Core & Chat Interface | Pending |
+| CAT-01 | Phase 2: Auto-Categorization & Learning | Pending |
+| CAT-02 | Phase 2: Auto-Categorization & Learning | Pending |
+| CAT-03 | Phase 2: Auto-Categorization & Learning | Pending |
+| RPT-01 | Phase 3: Narrative Savings Reports | Pending |
+| RPT-02 | Phase 3: Narrative Savings Reports | Pending |
+| RPT-03 | Phase 3: Narrative Savings Reports | Pending |
 
 **Coverage:**
 - v1 requirements: 16 total
@@ -92,4 +92,4 @@
 
 ---
 *Requirements defined: 2026-05-06*
-*Last updated: 2026-05-06 after initial definition*
+*Last updated: 2026-05-06 after roadmap creation*

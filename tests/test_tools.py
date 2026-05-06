@@ -383,9 +383,9 @@ def test_list_tags(mock_api_class):
 
 # ── TOOLS / dispatch / get_tools ───────────────────────────────────────────────
 
-def test_get_tools_returns_10_tools():
+def test_get_tools_returns_13_tools():
     from tools import get_tools
-    assert len(get_tools()) == 10
+    assert len(get_tools()) == 13
 
 
 def test_get_tools_names_match_handlers():
@@ -402,6 +402,9 @@ def test_get_tools_names_match_handlers():
         "get_income_insights",
         "list_categories",
         "list_tags",
+        "sum_transactions",
+        "calculate_net",
+        "compare_periods",
     }
 
 
@@ -422,3 +425,144 @@ def test_dispatch_unknown_tool():
     from tools import dispatch
     result = dispatch(_make_client(), "no_such_tool", {})
     assert result == {"error": "Unknown tool: no_such_tool"}
+
+
+# ── sum_transactions ───────────────────────────────────────────────────────────
+
+def _make_tx_dict(tx_type: str, amount: str, description: str = "tx") -> dict:
+    return {
+        "id": "1",
+        "attributes": {
+            "transactions": [
+                {"type": tx_type, "amount": amount, "description": description}
+            ]
+        },
+    }
+
+
+def test_sum_transactions_deposits_and_withdrawals():
+    from tools import dispatch
+    transactions = [
+        _make_tx_dict("deposit", "3000.00", "Salary"),
+        _make_tx_dict("withdrawal", "450.50", "Groceries"),
+        _make_tx_dict("withdrawal", "100.00", "Transport"),
+    ]
+    result = dispatch(_make_client(), "sum_transactions", {"transactions": transactions})
+
+    assert result["total_income"] == "3000.00"
+    assert result["total_expenses"] == "550.50"
+    assert result["net"] == "2449.50"
+    assert result["split_count"] == 3
+
+
+def test_sum_transactions_transfers_are_neutral():
+    from tools import dispatch
+    result = dispatch(_make_client(), "sum_transactions", {
+        "transactions": [_make_tx_dict("transfer", "500.00")]
+    })
+
+    assert result["total_transfers"] == "500.00"
+    assert result["net"] == "0"
+
+
+def test_sum_transactions_empty_list():
+    from tools import dispatch
+    result = dispatch(_make_client(), "sum_transactions", {"transactions": []})
+
+    assert result["total_income"] == "0"
+    assert result["total_expenses"] == "0"
+    assert result["split_count"] == 0
+
+
+# ── calculate_net ──────────────────────────────────────────────────────────────
+
+def _mock_insight_entry(name: str, difference_float: float) -> MagicMock:
+    entry = MagicMock()
+    entry.to_dict.return_value = {"name": name, "difference_float": difference_float}
+    return entry
+
+
+@patch("tools.InsightApi")
+def test_calculate_net(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+    mock_api.insight_expense_category.return_value = [
+        _mock_insight_entry("Food", -450.0),
+        _mock_insight_entry("Transport", -100.0),
+    ]
+    mock_api.insight_income_category.return_value = [
+        _mock_insight_entry("Salary", 3000.0),
+    ]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "calculate_net", {
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-31",
+    })
+
+    assert result["total_expenses"] == "550.0"
+    assert result["total_income"] == "3000.0"
+    assert result["net"] == "2450.0"
+
+
+@patch("tools.InsightApi")
+def test_calculate_net_missing_dates_returns_error(mock_api_class):
+    from tools import dispatch
+    result = dispatch(_make_client(), "calculate_net", {})
+    assert "error" in result
+
+
+# ── compare_periods ────────────────────────────────────────────────────────────
+
+@patch("tools.InsightApi")
+def test_compare_periods_returns_delta(mock_api_class):
+    mock_api = MagicMock()
+    mock_api_class.return_value = mock_api
+
+    # Period A: income 3000, expenses 500 → net 2500
+    # Period B: income 3200, expenses 600 → net 2600
+    def _insight_side_effect(start, end, accounts):
+        if start == datetime.date(2024, 1, 1):
+            if mock_api.insight_expense_category.call_count + mock_api.insight_income_category.call_count <= 2:
+                return [_mock_insight_entry("Food", -500.0)]
+            return [_mock_insight_entry("Salary", 3000.0)]
+        if start == datetime.date(2024, 2, 1):
+            if mock_api.insight_expense_category.call_count + mock_api.insight_income_category.call_count <= 4:
+                return [_mock_insight_entry("Food", -600.0)]
+            return [_mock_insight_entry("Salary", 3200.0)]
+        return []
+
+    mock_api.insight_expense_category.side_effect = [
+        [_mock_insight_entry("Food", -500.0)],   # period A expenses
+        [_mock_insight_entry("Food", -600.0)],   # period B expenses
+    ]
+    mock_api.insight_income_category.side_effect = [
+        [_mock_insight_entry("Salary", 3000.0)],  # period A income
+        [_mock_insight_entry("Salary", 3200.0)],  # period B income
+    ]
+
+    from tools import dispatch
+    result = dispatch(_make_client(), "compare_periods", {
+        "period_a_start": "2024-01-01",
+        "period_a_end": "2024-01-31",
+        "period_b_start": "2024-02-01",
+        "period_b_end": "2024-02-29",
+    })
+
+    assert "period_a" in result
+    assert "period_b" in result
+    assert "delta" in result
+    assert result["period_a"]["total_expenses"] == "500.0"
+    assert result["period_b"]["total_expenses"] == "600.0"
+    # expenses delta: 600 - 500 = 100 absolute, 20% increase
+    assert result["delta"]["expenses"]["absolute"] == "100.0"
+    assert result["delta"]["expenses"]["percent"] == "20.00"
+
+
+@patch("tools.InsightApi")
+def test_compare_periods_missing_args_returns_error(mock_api_class):
+    from tools import dispatch
+    result = dispatch(_make_client(), "compare_periods", {
+        "period_a_start": "2024-01-01",
+    })
+    assert "error" in result

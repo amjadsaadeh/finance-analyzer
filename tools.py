@@ -1,5 +1,7 @@
 import os
 import datetime
+from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, Field
 from openai import pydantic_function_tool
@@ -118,6 +120,43 @@ class ListTags(BaseModel):
     page: int = Field(1, description="Page number (default 1)")
 
 
+class SumTransactions(BaseModel):
+    """Sum transaction amounts from a list already returned by a previous tool call.
+
+    Use this instead of doing arithmetic yourself to avoid floating-point errors on large datasets.
+    Returns totals split by transaction type (deposit=income, withdrawal=expense, transfer=neutral).
+    """
+
+    transactions: list[dict[str, Any]] = Field(
+        ...,
+        description="List of transaction dicts as returned by list_transactions, get_transactions_by_date_range, or search_transactions",
+    )
+
+
+class CalculateNet(BaseModel):
+    """Calculate net cash flow (total income minus total expenses) for a date range.
+
+    Fetches expense and income insight totals from Firefly III and subtracts to produce net.
+    """
+
+    start_date: str = Field(..., description="Start date in YYYY-MM-DD format")
+    end_date: str = Field(..., description="End date in YYYY-MM-DD format")
+    account_ids: list[int] | None = Field(None, description="Filter by account IDs (optional)")
+
+
+class ComparePeriods(BaseModel):
+    """Compare income, expenses, and net cash flow between two date ranges.
+
+    Returns totals for each period plus the absolute and percentage delta (period_b minus period_a).
+    """
+
+    period_a_start: str = Field(..., description="Start of the first period (YYYY-MM-DD)")
+    period_a_end: str = Field(..., description="End of the first period (YYYY-MM-DD)")
+    period_b_start: str = Field(..., description="Start of the second period (YYYY-MM-DD)")
+    period_b_end: str = Field(..., description="End of the second period (YYYY-MM-DD)")
+    account_ids: list[int] | None = Field(None, description="Filter by account IDs (optional)")
+
+
 TOOLS: list = [
     pydantic_function_tool(ListTransactions, name="list_transactions"),
     pydantic_function_tool(GetTransactionsByDateRange, name="get_transactions_by_date_range"),
@@ -129,6 +168,9 @@ TOOLS: list = [
     pydantic_function_tool(GetIncomeInsights, name="get_income_insights"),
     pydantic_function_tool(ListCategories, name="list_categories"),
     pydantic_function_tool(ListTags, name="list_tags"),
+    pydantic_function_tool(SumTransactions, name="sum_transactions"),
+    pydantic_function_tool(CalculateNet, name="calculate_net"),
+    pydantic_function_tool(ComparePeriods, name="compare_periods"),
 ]
 
 
@@ -403,6 +445,149 @@ def _handler_list_tags(client: FireflyClient, args: dict) -> dict:
         return {"error": str(e)}
 
 
+def _insight_total(insights: list[dict]) -> Decimal:
+    """Sum the absolute values of difference_float across insight entries."""
+    return sum(
+        (Decimal(str(abs(e.get("difference_float", 0)))) for e in insights),
+        Decimal("0"),
+    )
+
+
+def _fetch_net(client: FireflyClient, start_date: str, end_date: str, account_ids: list | None) -> dict:
+    """Return income, expenses, and net for a date range. Shared by calculate_net and compare_periods."""
+    args = {"start_date": start_date, "end_date": end_date, "account_ids": account_ids}
+    expense_result = _handler_get_expense_insights(client, args)
+    if "error" in expense_result:
+        return expense_result
+    income_result = _handler_get_income_insights(client, args)
+    if "error" in income_result:
+        return income_result
+    total_expenses = _insight_total(expense_result["insights"])
+    total_income = _insight_total(income_result["insights"])
+    net = total_income - total_expenses
+    return {
+        "total_income": str(total_income),
+        "total_expenses": str(total_expenses),
+        "net": str(net),
+    }
+
+
+def _handler_sum_transactions(client: FireflyClient, args: dict) -> dict:
+    """Sum amounts from a list of transaction dicts using Decimal arithmetic.
+
+    Navigates the Firefly III transaction dict structure (``attributes.transactions`` splits)
+    and groups totals by type: deposit (income), withdrawal (expense), transfer.
+
+    Args:
+        args: Required key: ``transactions`` (list of transaction dicts).
+
+    Returns:
+        Dict with ``total_income``, ``total_expenses``, ``total_transfers``, ``net``,
+        and ``split_count``. All monetary values are strings to preserve precision.
+    """
+    transactions = args.get("transactions", [])
+    total_income = Decimal("0")
+    total_expenses = Decimal("0")
+    total_transfers = Decimal("0")
+    split_count = 0
+
+    for tx in transactions:
+        splits = tx.get("attributes", {}).get("transactions", [])
+        for split in splits:
+            tx_type = split.get("type", "")
+            try:
+                amount = Decimal(str(split.get("amount", "0")))
+            except Exception:
+                continue
+            split_count += 1
+            if tx_type == "deposit":
+                total_income += amount
+            elif tx_type == "withdrawal":
+                total_expenses += amount
+            elif tx_type == "transfer":
+                total_transfers += amount
+
+    return {
+        "total_income": str(total_income),
+        "total_expenses": str(total_expenses),
+        "total_transfers": str(total_transfers),
+        "net": str(total_income - total_expenses),
+        "split_count": split_count,
+    }
+
+
+def _handler_calculate_net(client: FireflyClient, args: dict) -> dict:
+    """Return net cash flow (income minus expenses) for a date range.
+
+    Aggregates all category-level insight totals from Firefly III into a single net figure.
+
+    Args:
+        args: Required keys: ``start_date``, ``end_date`` (YYYY-MM-DD strings).
+              Optional: ``account_ids`` (list[int]).
+
+    Returns:
+        Dict with ``total_income``, ``total_expenses``, ``net`` (all as strings),
+        or ``{"error": "..."}`` on bad args or API failure.
+    """
+    try:
+        start_date = args["start_date"]
+        end_date = args["end_date"]
+    except KeyError as e:
+        return {"error": f"Missing required argument: {e}"}
+    return _fetch_net(client, start_date, end_date, args.get("account_ids"))
+
+
+def _handler_compare_periods(client: FireflyClient, args: dict) -> dict:
+    """Compare income, expenses, and net between two date ranges.
+
+    Args:
+        args: Required keys: ``period_a_start``, ``period_a_end``,
+              ``period_b_start``, ``period_b_end`` (YYYY-MM-DD strings).
+              Optional: ``account_ids`` (list[int]).
+
+    Returns:
+        Dict with ``period_a``, ``period_b`` (each containing ``total_income``,
+        ``total_expenses``, ``net``), and ``delta`` (``period_b - period_a``)
+        with ``absolute`` and ``percent`` sub-keys for income, expenses, and net.
+        Returns ``{"error": "..."}`` on bad args or API failure.
+    """
+    try:
+        a_start = args["period_a_start"]
+        a_end = args["period_a_end"]
+        b_start = args["period_b_start"]
+        b_end = args["period_b_end"]
+    except KeyError as e:
+        return {"error": f"Missing required argument: {e}"}
+
+    account_ids = args.get("account_ids")
+    period_a = _fetch_net(client, a_start, a_end, account_ids)
+    if "error" in period_a:
+        return period_a
+    period_b = _fetch_net(client, b_start, b_end, account_ids)
+    if "error" in period_b:
+        return period_b
+
+    def _delta(key: str) -> dict:
+        a = Decimal(period_a[key])
+        b = Decimal(period_b[key])
+        absolute = b - a
+        percent = (absolute / a * 100) if a != 0 else None
+        return {
+            "absolute": str(absolute),
+            "percent": str(percent.quantize(Decimal("0.01"))) if percent is not None else None,
+        }
+
+    return {
+        "period_a": period_a,
+        "period_b": period_b,
+        "delta": {
+            "income": _delta("total_income"),
+            "expenses": _delta("total_expenses"),
+            "net": _delta("net"),
+        },
+    }
+
+
 _HANDLERS: dict = {
     "list_transactions": _handler_list_transactions,
     "get_transactions_by_date_range": _handler_get_transactions_by_date_range,
@@ -414,6 +599,9 @@ _HANDLERS: dict = {
     "get_income_insights": _handler_get_income_insights,
     "list_categories": _handler_list_categories,
     "list_tags": _handler_list_tags,
+    "sum_transactions": _handler_sum_transactions,
+    "calculate_net": _handler_calculate_net,
+    "compare_periods": _handler_compare_periods,
 }
 
 

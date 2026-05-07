@@ -41,7 +41,7 @@ app.add_middleware(
 )
 
 
-@app.get("/")
+@app.get("/health")
 async def health_check():
     """Simple health check endpoint."""
     return {"status": "ok"}
@@ -52,7 +52,9 @@ from src.chat import router as chat_router  # noqa: E402
 
 app.include_router(chat_router)
 
-# Static files — only mount if the directory exists
+# Static files — mount at root after API routes so /chat/* takes priority.
+# StaticFiles(html=True) serves index.html for "/" and falls back to
+# index.html for unknown paths (SPA-style).
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(_static_dir):
-    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")

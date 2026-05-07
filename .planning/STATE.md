@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 1 of 3 (Agent Core & Chat Interface)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-05-06 — Roadmap created
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-05-07 — Completed 01-01-PLAN
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -34,6 +34,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01-agent-core-chat-interface P01 | 38min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -43,6 +44,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
 - Roadmap created with 3 phases derived from requirement categories and dependencies
+- [Phase 01-agent-core-chat-interface]: Used strict_mode=False for sum_transactions because dict[str,Any] is incompatible with strict JSON schema — Agents SDK rejects additionalProperties:true in strict mode; sum_transactions takes arbitrary transaction dicts
+- [Phase 01-agent-core-chat-interface]: Used ToolContext in dispatch wrapping tests instead of MagicMock — SDK on_invoke_tool needs tool_name, tool_call_id, and tool_arguments attributes only present on ToolContext
 
 ### Pending Todos
 

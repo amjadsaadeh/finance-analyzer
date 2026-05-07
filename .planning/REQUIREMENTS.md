@@ -14,10 +14,10 @@
 
 ### Tool Routing
 
-- [ ] **TOOL-01**: LLM routes natural language questions to existing Firefly III tools (list, search, filter, insights, net, compare)
-- [ ] **TOOL-02**: LLM answers spending questions with real transaction data ("How much did I spend on hobbies last month?")
-- [ ] **TOOL-03**: LLM identifies unnecessary or anomalous spending when asked ("Which expenses weren't necessary?")
-- [ ] **TOOL-04**: All numeric results come from tool calls (Decimal precision), never from LLM calculation
+- [x] **TOOL-01**: LLM routes natural language questions to existing Firefly III tools (list, search, filter, insights, net, compare)
+- [x] **TOOL-02**: LLM answers spending questions with real transaction data ("How much did I spend on hobbies last month?")
+- [x] **TOOL-03**: LLM identifies unnecessary or anomalous spending when asked ("Which expenses weren't necessary?")
+- [x] **TOOL-04**: All numeric results come from tool calls (Decimal precision), never from LLM calculation
 
 ### Categorization
 
@@ -72,10 +72,10 @@
 | CHAT-02 | Phase 1: Agent Core & Chat Interface | Pending |
 | CHAT-03 | Phase 1: Agent Core & Chat Interface | Pending |
 | CHAT-04 | Phase 1: Agent Core & Chat Interface | Pending |
-| TOOL-01 | Phase 1: Agent Core & Chat Interface | Pending |
-| TOOL-02 | Phase 1: Agent Core & Chat Interface | Pending |
-| TOOL-03 | Phase 1: Agent Core & Chat Interface | Pending |
-| TOOL-04 | Phase 1: Agent Core & Chat Interface | Pending |
+| TOOL-01 | Phase 1: Agent Core & Chat Interface | Complete |
+| TOOL-02 | Phase 1: Agent Core & Chat Interface | Complete |
+| TOOL-03 | Phase 1: Agent Core & Chat Interface | Complete |
+| TOOL-04 | Phase 1: Agent Core & Chat Interface | Complete |
 | SAFE-01 | Phase 1: Agent Core & Chat Interface | Pending |
 | SAFE-02 | Phase 1: Agent Core & Chat Interface | Pending |
 | CAT-01 | Phase 2: Auto-Categorization & Learning | Pending |

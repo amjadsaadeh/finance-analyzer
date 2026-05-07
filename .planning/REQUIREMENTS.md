@@ -7,10 +7,10 @@
 
 ### Chat Interface
 
-- [ ] **CHAT-01**: User can interact via web-based chat interface served by FastAPI
-- [ ] **CHAT-02**: Chat displays LLM responses in real-time via SSE streaming
-- [ ] **CHAT-03**: Chat maintains session-scoped conversation context (remember date ranges, categories, filters within a session)
-- [ ] **CHAT-04**: Chat gracefully handles errors — missing data, API failures, and invalid queries return natural language explanations, not stack traces
+- [x] **CHAT-01**: User can interact via web-based chat interface served by FastAPI
+- [x] **CHAT-02**: Chat displays LLM responses in real-time via SSE streaming
+- [x] **CHAT-03**: Chat maintains session-scoped conversation context (remember date ranges, categories, filters within a session)
+- [x] **CHAT-04**: Chat gracefully handles errors — missing data, API failures, and invalid queries return natural language explanations, not stack traces
 
 ### Tool Routing
 
@@ -33,8 +33,8 @@
 
 ### Write Safety
 
-- [ ] **SAFE-01**: All financial data modifications (tags, categories) require explicit user confirmation before applying
-- [ ] **SAFE-02**: System previews proposed changes before confirmation ("I'll categorize 5 transactions as Groceries. Confirm?")
+- [x] **SAFE-01**: All financial data modifications (tags, categories) require explicit user confirmation before applying
+- [x] **SAFE-02**: System previews proposed changes before confirmation ("I'll categorize 5 transactions as Groceries. Confirm?")
 
 ## v2 Requirements
 
@@ -68,16 +68,16 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CHAT-01 | Phase 1: Agent Core & Chat Interface | Pending |
-| CHAT-02 | Phase 1: Agent Core & Chat Interface | Pending |
-| CHAT-03 | Phase 1: Agent Core & Chat Interface | Pending |
-| CHAT-04 | Phase 1: Agent Core & Chat Interface | Pending |
+| CHAT-01 | Phase 1: Agent Core & Chat Interface | Complete |
+| CHAT-02 | Phase 1: Agent Core & Chat Interface | Complete |
+| CHAT-03 | Phase 1: Agent Core & Chat Interface | Complete |
+| CHAT-04 | Phase 1: Agent Core & Chat Interface | Complete |
 | TOOL-01 | Phase 1: Agent Core & Chat Interface | Complete |
 | TOOL-02 | Phase 1: Agent Core & Chat Interface | Complete |
 | TOOL-03 | Phase 1: Agent Core & Chat Interface | Complete |
 | TOOL-04 | Phase 1: Agent Core & Chat Interface | Complete |
-| SAFE-01 | Phase 1: Agent Core & Chat Interface | Pending |
-| SAFE-02 | Phase 1: Agent Core & Chat Interface | Pending |
+| SAFE-01 | Phase 1: Agent Core & Chat Interface | Complete |
+| SAFE-02 | Phase 1: Agent Core & Chat Interface | Complete |
 | CAT-01 | Phase 2: Auto-Categorization & Learning | Pending |
 | CAT-02 | Phase 2: Auto-Categorization & Learning | Pending |
 | CAT-03 | Phase 2: Auto-Categorization & Learning | Pending |

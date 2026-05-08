@@ -41,7 +41,13 @@ def main():
         print("See .env.example for details.")
         raise SystemExit(1)
 
-    uvicorn.run("src.app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "src.app:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="debug",
+    )
 
 
 if __name__ == "__main__":

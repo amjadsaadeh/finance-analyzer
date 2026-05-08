@@ -28,6 +28,7 @@ from src.models import ApproveRequest, ChatStreamRequest
 from src.sessions import SessionStore
 
 logger = logging.getLogger(__name__)
+logging.getLogger("src.chat").setLevel(logging.DEBUG)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 

@@ -82,10 +82,17 @@ async def chat_stream(
 
             assistant_text = ""
 
+            # Track tool call names across events: call_id -> function name.
+            # The function name arrives in response.output_item.added (before
+            # arguments complete), so we store it and look it up when
+            # arguments are done.
+            _pending_tool_names: dict[str, str] = {}
+
             async for event in result.stream_events():
                 # ---- Raw response events (text deltas, function calls) ----
                 if event.type == "raw_response_event":
                     raw = event.data
+
                     # Text delta
                     if hasattr(raw, "type") and raw.type == "response.output_text.delta":
                         delta = getattr(raw, "delta", "")
@@ -95,16 +102,42 @@ async def chat_stream(
                                 "event": "text",
                                 "data": json.dumps({"content": delta}),
                             }
-                    # Function call completed
+
+                    # Function call name announcement — store for later lookup
+                    elif (
+                        hasattr(raw, "type")
+                        and raw.type == "response.output_item.added"
+                    ):
+                        # Extract function name and call_id from the output item
+                        item = getattr(raw, "item", None) or raw
+                        fn_name = getattr(item, "name", None)
+                        call_id = getattr(item, "call_id", None) or getattr(
+                            item, "id", None
+                        )
+                        if fn_name and call_id:
+                            _pending_tool_names[call_id] = fn_name
+
+                    # Function call arguments complete — emit tool_call event
                     elif (
                         hasattr(raw, "type")
                         and raw.type == "response.function_call_arguments.done"
                     ):
-                        fn_name = getattr(raw, "name", "unknown")
+                        # Try to get the name from the event directly, then
+                        # fall back to our tracked names from output_item.added.
+                        fn_name = getattr(raw, "name", None)
+                        if not fn_name:
+                            call_id = getattr(raw, "call_id", None)
+                            if call_id and call_id in _pending_tool_names:
+                                fn_name = _pending_tool_names.pop(call_id)
+                        if not fn_name:
+                            fn_name = "unknown"
+
                         fn_args = getattr(raw, "arguments", "{}")
                         try:
                             args_dict = (
-                                json.loads(fn_args) if isinstance(fn_args, str) else {}
+                                json.loads(fn_args)
+                                if isinstance(fn_args, str)
+                                else {}
                             )
                         except (json.JSONDecodeError, TypeError):
                             args_dict = {}
@@ -115,11 +148,21 @@ async def chat_stream(
                             ),
                         }
 
-                # ---- Run-item events (message completed, tool output, etc.) ----
+                # ---- Run-item events (tool calls with structured data) ----
                 elif event.type == "run_item_stream_event":
-                    # We handle these at a higher level — the raw events give
-                    # us the streaming detail we need for text/tool_call.
-                    pass
+                    # RunItemStreamEvent provides higher-level items with
+                    # well-structured data. Use this as a fallback for tool
+                    # call names if the raw event didn't carry the name.
+                    item = getattr(event.data, "item", None) or event.data
+                    item_type = getattr(item, "type", "")
+                    if "tool_call" in str(item_type).lower():
+                        fn_name = getattr(item, "name", None)
+                        if fn_name:
+                            call_id = getattr(item, "call_id", None) or getattr(
+                                item, "id", None
+                            )
+                            if call_id:
+                                _pending_tool_names[call_id] = fn_name
 
                 # ---- Agent updated event ----
                 elif event.type == "agent_updated_stream_event":

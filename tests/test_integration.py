@@ -90,12 +90,17 @@ class TestSSEStreamingFlow:
         mock_result = MagicMock()
 
         async def _stream_events():
-            # Simulate a function call completed event
-            raw_fn = MagicMock()
-            raw_fn.type = "response.function_call_arguments.done"
-            raw_fn.name = "list_transactions"
-            raw_fn.arguments = '{"limit": 10}'
-            yield MagicMock(type="raw_response_event", data=raw_fn)
+            # Simulate a run_item_stream_event with tool_called name
+            mock_item = MagicMock()
+            mock_item.tool_name = "list_transactions"
+            mock_item.call_id = "call_test123"
+            mock_item.raw_item = MagicMock()
+            mock_item.raw_item.arguments = '{"limit": 10}'
+            event = MagicMock(spec=[])
+            event.type = "run_item_stream_event"
+            event.name = "tool_called"
+            event.item = mock_item
+            yield event
 
         mock_result.stream_events = MagicMock(return_value=_stream_events())
         mock_result.to_state = MagicMock(

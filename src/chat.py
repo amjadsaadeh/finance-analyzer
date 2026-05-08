@@ -82,12 +82,8 @@ async def chat_stream(
 
             assistant_text = ""
 
-# Track which call_ids we've already emitted a tool_call event for,
-            # so we don't send duplicates from both raw and run_item events.
-            _emitted_tool_calls: set[str] = set()
-
             async for event in result.stream_events():
-                # ---- Raw response events (text deltas, function calls) ----
+                # ---- Raw response events (text deltas only) ----
                 if event.type == "raw_response_event":
                     raw = event.data
                     raw_type = getattr(raw, "type", "")
@@ -102,51 +98,17 @@ async def chat_stream(
                                 "data": json.dumps({"content": delta}),
                             }
 
-                    # Function call completed — emit tool_call event with name
-                    elif raw_type == "response.function_call_arguments.done":
-                        fn_name = getattr(raw, "name", None) or "unknown"
-                        fn_args = getattr(raw, "arguments", "{}")
-                        call_id = getattr(raw, "call_id", None) or getattr(raw, "item_id", None)
-                        logger.info(
-                            "raw tool_call: name=%s call_id=%s",
-                            fn_name,
-                            call_id,
-                        )
-                        if call_id:
-                            _emitted_tool_calls.add(call_id)
-                        try:
-                            args_dict = (
-                                json.loads(fn_args)
-                                if isinstance(fn_args, str)
-                                else {}
-                            )
-                        except (json.JSONDecodeError, TypeError):
-                            args_dict = {}
-                        yield {
-                            "event": "tool_call",
-                            "data": json.dumps(
-                                {"name": fn_name, "arguments": args_dict}
-                            ),
-                        }
+                    # Note: We do NOT emit tool_call from raw events because
+                    # response.function_call_arguments.done does NOT carry .name
+                    # (it's on the parent item, not the arguments-done sub-event).
+                    # Tool names come from run_item_stream_event below.
 
-                    # Catch any other function-call-like raw events we might be missing
-                    elif "function_call" in raw_type or raw_type == "response.output_item.added":
-                        logger.debug(
-                            "raw event (not emitted as tool_call): type=%s attrs=%s",
-                            raw_type,
-                            [a for a in dir(raw) if not a.startswith("_")],
-                        )
-
-                # ---- Run-item events (tool calls with structured data) ----
+                # ---- Run-item events (tool calls with reliable names) ----
                 elif event.type == "run_item_stream_event":
                     if event.name == "tool_called":
-                        # Only emit if we haven't already sent this tool call
-                        # from the raw response event above.
+                        # This is the authoritative source for tool call names.
+                        # .item.tool_name reliably provides the function name.
                         item = event.item
-                        call_id = getattr(item, "call_id", None) or ""
-                        if call_id and call_id in _emitted_tool_calls:
-                            continue  # Already emitted from raw event
-
                         fn_name = getattr(item, "tool_name", None) or "unknown"
                         fn_args = {}
                         raw_item = getattr(item, "raw_item", None)
@@ -158,12 +120,6 @@ async def chat_stream(
                                 except (json.JSONDecodeError, TypeError):
                                     fn_args = {}
 
-                        logger.info(
-                            "run_item tool_called: name=%s call_id=%s (already_emitted=%s)",
-                            fn_name,
-                            call_id,
-                            call_id in _emitted_tool_calls if call_id else "N/A",
-                        )
                         yield {
                             "event": "tool_call",
                             "data": json.dumps(
@@ -171,48 +127,7 @@ async def chat_stream(
                             ),
                         }
 
-                    # Function call arguments complete — emit tool_call event
-                    elif (
-                        hasattr(raw, "type")
-                        and raw.type == "response.function_call_arguments.done"
-                    ):
-                        # Try to get the name from the event directly, then
-                        # fall back to our tracked names from output_item.added.
-                        fn_name = getattr(raw, "name", None)
-                        if not fn_name:
-                            call_id = getattr(raw, "call_id", None)
-                            if call_id and call_id in _pending_tool_names:
-                                fn_name = _pending_tool_names.pop(call_id)
-                        if not fn_name:
-                            fn_name = "unknown"
-
-                        fn_args = getattr(raw, "arguments", "{}")
-                        try:
-                            args_dict = (
-                                json.loads(fn_args)
-                                if isinstance(fn_args, str)
-                                else {}
-                            )
-                        except (json.JSONDecodeError, TypeError):
-                            args_dict = {}
-                        yield {
-                            "event": "tool_call",
-                            "data": json.dumps(
-                                {"name": fn_name, "arguments": args_dict}
-                            ),
-                        }
-
-                # ---- Run-item events (tool calls, messages) ----
-                elif event.type == "run_item_stream_event":
-                    item = event.item
-                    if item.type == "tool_call_item":
-                        fn_name = item.tool_name
-                        if fn_name:
-                            call_id = item.call_id
-                            if call_id:
-                                _pending_tool_names[call_id] = fn_name
-
-                # ---- Agent updated event ----
+                    # ---- Agent updated event ----
                 elif event.type == "agent_updated_stream_event":
                     pass
 

@@ -13,7 +13,6 @@ Environment variables (set in .env file or shell):
     FIREFLY_API_TOKEN   — Required. Your Firefly III personal access token.
 """
 
-import logging
 import os
 
 from dotenv import load_dotenv
@@ -21,12 +20,6 @@ from dotenv import load_dotenv
 # Load .env file before anything else so all modules can read env vars.
 # override=False means shell env vars take precedence over .env values.
 load_dotenv(override=False)
-
-# Configure logging so application log messages appear in the console.
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(levelname)s:%(name)s:%(message)s",
-)
 
 import uvicorn  # noqa: E402
 

@@ -90,9 +90,10 @@ async def chat_stream(
                 # ---- Raw response events (text deltas, function calls) ----
                 if event.type == "raw_response_event":
                     raw = event.data
+                    raw_type = getattr(raw, "type", "")
 
                     # Text delta — stream to client
-                    if hasattr(raw, "type") and raw.type == "response.output_text.delta":
+                    if raw_type == "response.output_text.delta":
                         delta = getattr(raw, "delta", "")
                         if delta:
                             assistant_text += delta
@@ -102,13 +103,15 @@ async def chat_stream(
                             }
 
                     # Function call completed — emit tool_call event with name
-                    elif (
-                        hasattr(raw, "type")
-                        and raw.type == "response.function_call_arguments.done"
-                    ):
+                    elif raw_type == "response.function_call_arguments.done":
                         fn_name = getattr(raw, "name", None) or "unknown"
                         fn_args = getattr(raw, "arguments", "{}")
                         call_id = getattr(raw, "call_id", None) or getattr(raw, "item_id", None)
+                        logger.info(
+                            "raw tool_call: name=%s call_id=%s",
+                            fn_name,
+                            call_id,
+                        )
                         if call_id:
                             _emitted_tool_calls.add(call_id)
                         try:
@@ -125,6 +128,14 @@ async def chat_stream(
                                 {"name": fn_name, "arguments": args_dict}
                             ),
                         }
+
+                    # Catch any other function-call-like raw events we might be missing
+                    elif "function_call" in raw_type or raw_type == "response.output_item.added":
+                        logger.debug(
+                            "raw event (not emitted as tool_call): type=%s attrs=%s",
+                            raw_type,
+                            [a for a in dir(raw) if not a.startswith("_")],
+                        )
 
                 # ---- Run-item events (tool calls with structured data) ----
                 elif event.type == "run_item_stream_event":
@@ -147,6 +158,12 @@ async def chat_stream(
                                 except (json.JSONDecodeError, TypeError):
                                     fn_args = {}
 
+                        logger.info(
+                            "run_item tool_called: name=%s call_id=%s (already_emitted=%s)",
+                            fn_name,
+                            call_id,
+                            call_id in _emitted_tool_calls if call_id else "N/A",
+                        )
                         yield {
                             "event": "tool_call",
                             "data": json.dumps(

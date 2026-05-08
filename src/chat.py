@@ -82,18 +82,16 @@ async def chat_stream(
 
             assistant_text = ""
 
-            # Track tool call names across events: call_id -> function name.
-            # The function name arrives in response.output_item.added (before
-            # arguments complete), so we store it and look it up when
-            # arguments are done.
-            _pending_tool_names: dict[str, str] = {}
+# Track which call_ids we've already emitted a tool_call event for,
+            # so we don't send duplicates from both raw and run_item events.
+            _emitted_tool_calls: set[str] = set()
 
             async for event in result.stream_events():
                 # ---- Raw response events (text deltas, function calls) ----
                 if event.type == "raw_response_event":
                     raw = event.data
 
-                    # Text delta
+                    # Text delta — stream to client
                     if hasattr(raw, "type") and raw.type == "response.output_text.delta":
                         delta = getattr(raw, "delta", "")
                         if delta:
@@ -103,19 +101,58 @@ async def chat_stream(
                                 "data": json.dumps({"content": delta}),
                             }
 
-                    # Function call name announcement — store for later lookup
+                    # Function call completed — emit tool_call event with name
                     elif (
                         hasattr(raw, "type")
-                        and raw.type == "response.output_item.added"
+                        and raw.type == "response.function_call_arguments.done"
                     ):
-                        # Extract function name and call_id from the output item
-                        item = getattr(raw, "item", None) or raw
-                        fn_name = getattr(item, "name", None)
-                        call_id = getattr(item, "call_id", None) or getattr(
-                            item, "id", None
-                        )
-                        if fn_name and call_id:
-                            _pending_tool_names[call_id] = fn_name
+                        fn_name = getattr(raw, "name", None) or "unknown"
+                        fn_args = getattr(raw, "arguments", "{}")
+                        call_id = getattr(raw, "call_id", None) or getattr(raw, "item_id", None)
+                        if call_id:
+                            _emitted_tool_calls.add(call_id)
+                        try:
+                            args_dict = (
+                                json.loads(fn_args)
+                                if isinstance(fn_args, str)
+                                else {}
+                            )
+                        except (json.JSONDecodeError, TypeError):
+                            args_dict = {}
+                        yield {
+                            "event": "tool_call",
+                            "data": json.dumps(
+                                {"name": fn_name, "arguments": args_dict}
+                            ),
+                        }
+
+                # ---- Run-item events (tool calls with structured data) ----
+                elif event.type == "run_item_stream_event":
+                    if event.name == "tool_called":
+                        # Only emit if we haven't already sent this tool call
+                        # from the raw response event above.
+                        item = event.item
+                        call_id = getattr(item, "call_id", None) or ""
+                        if call_id and call_id in _emitted_tool_calls:
+                            continue  # Already emitted from raw event
+
+                        fn_name = getattr(item, "tool_name", None) or "unknown"
+                        fn_args = {}
+                        raw_item = getattr(item, "raw_item", None)
+                        if raw_item is not None:
+                            raw_args = getattr(raw_item, "arguments", "{}")
+                            if isinstance(raw_args, str):
+                                try:
+                                    fn_args = json.loads(raw_args)
+                                except (json.JSONDecodeError, TypeError):
+                                    fn_args = {}
+
+                        yield {
+                            "event": "tool_call",
+                            "data": json.dumps(
+                                {"name": fn_name, "arguments": fn_args}
+                            ),
+                        }
 
                     # Function call arguments complete — emit tool_call event
                     elif (

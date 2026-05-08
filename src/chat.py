@@ -148,19 +148,13 @@ async def chat_stream(
                             ),
                         }
 
-                # ---- Run-item events (tool calls with structured data) ----
+                # ---- Run-item events (tool calls, messages) ----
                 elif event.type == "run_item_stream_event":
-                    # RunItemStreamEvent provides higher-level items with
-                    # well-structured data. Use this as a fallback for tool
-                    # call names if the raw event didn't carry the name.
-                    item = getattr(event.data, "item", None) or event.data
-                    item_type = getattr(item, "type", "")
-                    if "tool_call" in str(item_type).lower():
-                        fn_name = getattr(item, "name", None)
+                    item = event.item
+                    if item.type == "tool_call_item":
+                        fn_name = item.tool_name
                         if fn_name:
-                            call_id = getattr(item, "call_id", None) or getattr(
-                                item, "id", None
-                            )
+                            call_id = item.call_id
                             if call_id:
                                 _pending_tool_names[call_id] = fn_name
 

@@ -6,11 +6,30 @@ responses, and approval flags on write operations.
 """
 
 import json
+from datetime import date, datetime
 from typing import Any
 
 from agents import Agent, RunContextWrapper, function_tool
 
 from tools import FireflyClient, dispatch
+
+
+def _json_serialize(obj: Any) -> str:
+    """Serialize a dispatch result dict to JSON, converting datetime/date to ISO strings.
+
+    The Firefly III API client returns datetime objects (not strings) in
+    transaction data. Standard json.dumps() raises TypeError on these.
+    """
+    return json.dumps(obj, default=_json_default)
+
+
+def _json_default(obj: Any) -> str:
+    """Handle non-JSON-serializable types from Firefly III data."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, date):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 # ---------------------------------------------------------------------------
 # System prompt
@@ -62,7 +81,7 @@ async def list_transactions(
 page parameter to retrieve subsequent pages."""
     client = _get_client(ctx)
     result = dispatch(client, "list_transactions", {"limit": limit, "page": page})
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool
@@ -81,7 +100,7 @@ Results are paginated; increase page to retrieve more."""
         "get_transactions_by_date_range",
         {"start_date": start_date, "end_date": end_date, "limit": limit, "page": page},
     )
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool
@@ -98,7 +117,7 @@ async def search_transactions(
         "search_transactions",
         {"query": query, "limit": limit, "page": page},
     )
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool
@@ -115,7 +134,7 @@ account type (e.g. asset, expense, revenue, liability, cash)."""
         args["account_type"] = account_type
     client = _get_client(ctx)
     result = dispatch(client, "list_accounts", args)
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool
@@ -132,7 +151,7 @@ understanding where money went."""
         args["account_ids"] = account_ids
     client = _get_client(ctx)
     result = dispatch(client, "get_expense_insights", args)
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool
@@ -148,7 +167,7 @@ async def get_income_insights(
         args["account_ids"] = account_ids
     client = _get_client(ctx)
     result = dispatch(client, "get_income_insights", args)
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool
@@ -160,7 +179,7 @@ async def list_categories(
     """List all transaction categories."""
     client = _get_client(ctx)
     result = dispatch(client, "list_categories", {"limit": limit, "page": page})
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool
@@ -172,7 +191,7 @@ async def list_tags(
     """List all transaction tags."""
     client = _get_client(ctx)
     result = dispatch(client, "list_tags", {"limit": limit, "page": page})
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool(strict_mode=False)
@@ -186,7 +205,7 @@ floating-point errors. Returns totals split by transaction type \
 (deposit=income, withdrawal=expense, transfer=neutral)."""
     client = _get_client(ctx)
     result = dispatch(client, "sum_transactions", {"transactions": transactions})
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool
@@ -204,7 +223,7 @@ and subtracts to produce net."""
         args["account_ids"] = account_ids
     client = _get_client(ctx)
     result = dispatch(client, "calculate_net", args)
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool
@@ -228,7 +247,7 @@ Returns totals for each period plus the absolute and percentage delta."""
         args["account_ids"] = account_ids
     client = _get_client(ctx)
     result = dispatch(client, "compare_periods", args)
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 # ---------------------------------------------------------------------------
@@ -250,7 +269,7 @@ REQUIRES USER CONFIRMATION before applying changes."""
         "update_transaction_tags",
         {"transaction_id": transaction_id, "tags": tags},
     )
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 @function_tool(needs_approval=True)
@@ -267,7 +286,7 @@ before applying changes."""
         "update_transaction_category",
         {"transaction_id": transaction_id, "category_name": category_name},
     )
-    return json.dumps(result)
+    return _json_serialize(result)
 
 
 # ---------------------------------------------------------------------------

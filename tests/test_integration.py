@@ -15,10 +15,7 @@ import datetime
 import os
 import re
 import subprocess
-import textwrap
 import time
-import urllib.error
-import urllib.request
 import uuid
 
 import pytest
@@ -34,60 +31,96 @@ pytestmark = pytest.mark.integration
 _COMPOSE_FILE = os.path.join(os.path.dirname(__file__), "docker-compose.firefly.yml")
 _PORT = 18080
 
+# PHP script written into the container to mint a PAT without tinker
+_TOKEN_SCRIPT = """\
+<?php
+define('LARAVEL_START', microtime(true));
+require '/var/www/html/vendor/autoload.php';
+$app = require_once '/var/www/html/bootstrap/app.php';
+$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+$user = \\FireflyIII\\User::where('email', 'admin@inttest.local')->firstOrFail();
+$tok = $user->createToken('ci-test');
+// JWT token is the last token in stdout; log noise goes to stderr via LOG_CHANNEL
+file_put_contents('php://stderr', '');
+echo $tok->accessToken;
+"""
+
 
 # ---------------------------------------------------------------------------
 # Docker / environment lifecycle
 # ---------------------------------------------------------------------------
 
-def _wait_for_firefly(base_url: str, timeout: int = 180) -> None:
-    """Poll /api/v1/about until the app responds (401 = app up, auth required)."""
+def _compose(project: str, *args) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["docker", "compose", "-f", _COMPOSE_FILE, "-p", project, *args],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _wait_healthy(project: str, service: str, timeout: int = 180) -> None:
+    """Block until the named compose service reports 'healthy'."""
+    container = f"{project}-{service}-1"
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        try:
-            urllib.request.urlopen(
-                urllib.request.Request(f"{base_url}/api/v1/about"), timeout=3
-            )
-            return  # 200 — unexpected but fine
-        except urllib.error.HTTPError as exc:
-            if exc.code == 401:
-                return  # auth required → app is fully up
-        except Exception:
-            pass
+        result = subprocess.run(
+            ["docker", "inspect", container, "--format", "{{.State.Health.Status}}"],
+            capture_output=True,
+        )
+        if result.stdout.decode().strip() == "healthy":
+            return
         time.sleep(3)
-    raise TimeoutError(f"Firefly III did not become ready within {timeout}s at {base_url}")
-
-
-def _bootstrap_token(compose_file: str, project: str) -> str:
-    """Create an admin user inside the container and return a Personal Access Token."""
-    php = textwrap.dedent("""\
-        $u = \\FireflyIII\\User::firstOrCreate(
-            ['email' => 'admin@inttest.local'],
-            ['password' => bcrypt('inttest'), 'blocked' => 0]
-        );
-        $role = \\Spatie\\Permission\\Models\\Role::firstOrCreate(
-            ['name' => 'owner', 'guard_name' => 'web']
-        );
-        if (!$u->hasRole('owner')) { $u->assignRole($role); }
-        echo '>>>T_S<<<' . $u->createToken('ci')->accessToken . '>>>T_E<<<';
-    """)
-    result = subprocess.run(
-        [
-            "docker", "compose", "-f", compose_file, "-p", project,
-            "exec", "-T", "firefly_app", "php", "artisan", "tinker",
-        ],
-        input=php.encode(),
-        capture_output=True,
-        timeout=90,
+    raise TimeoutError(
+        f"Container {container} did not become healthy within {timeout}s"
     )
+
+
+def _bootstrap_token(project: str) -> str:
+    """
+    Prepare the Firefly III container for testing and return a Bearer JWT.
+
+    Steps:
+      1. Create the first admin user via built-in artisan command.
+      2. Create a Passport personal-access client (needed for createToken()).
+      3. Run a small PHP bootstrap script to mint and print the token.
+    """
+    def _exec(*cmd) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["docker", "compose", "-f", _COMPOSE_FILE, "-p", project,
+             "exec", "-T", "firefly_app", *cmd],
+            capture_output=True,
+            timeout=60,
+        )
+
+    # Step 1: create first admin user (only works in APP_ENV=testing)
+    r = _exec("php", "artisan", "system:create-first-user", "admin@inttest.local")
+    if r.returncode != 0 and b"already exists" not in r.stderr:
+        raise RuntimeError(f"create-first-user failed:\n{r.stderr.decode()[:500]}")
+
+    # Step 2: create user group membership (required in Firefly III v6)
+    _exec("php", "artisan", "correction:create-group-memberships")
+    _exec("php", "artisan", "correction:preferences")
+
+    # Step 3: create personal access OAuth client (idempotent)
+    _exec("php", "artisan", "passport:client",
+          "--personal", "--name=ci-client", "--no-interaction")
+
+    # Step 4: write the token-minting script into the container via base64
+    import base64
+    php_b64 = base64.b64encode(_TOKEN_SCRIPT.encode()).decode()
+    _exec("bash", "-c", f"echo '{php_b64}' | base64 -d > /tmp/make_token.php")
+    result = _exec("php", "/tmp/make_token.php")
+
+    # The JWT starts with eyJ; extract it from combined output
     combined = result.stdout.decode() + result.stderr.decode()
-    m = re.search(r">>>T_S<<<(.+?)>>>T_E<<<", combined, re.DOTALL)
+    m = re.search(r"(eyJ[A-Za-z0-9_.-]+)", combined)
     if not m:
         raise RuntimeError(
-            "Could not extract PAT from artisan tinker output.\n"
+            f"Could not find JWT in make_token.php output.\n"
             f"stdout: {result.stdout.decode()[:800]}\n"
             f"stderr: {result.stderr.decode()[:800]}"
         )
-    return m.group(1).strip()
+    return m.group(1)
 
 
 @pytest.fixture(scope="session")
@@ -101,18 +134,15 @@ def firefly_env():
 
     project = f"ffinttest{uuid.uuid4().hex[:8]}"
     try:
-        subprocess.run(
-            ["docker", "compose", "-f", _COMPOSE_FILE, "-p", project, "up", "-d"],
-            check=True,
-        )
-        base_url = f"http://localhost:{_PORT}"
-        _wait_for_firefly(base_url)
-        token = _bootstrap_token(_COMPOSE_FILE, project)
-        yield base_url, token
+        _compose(project, "up", "-d")
+        _wait_healthy(project, "firefly_app")
+        token = _bootstrap_token(project)
+        yield f"http://localhost:{_PORT}", token
     finally:
         subprocess.run(
             ["docker", "compose", "-f", _COMPOSE_FILE, "-p", project, "down", "-v"],
             check=False,
+            capture_output=True,
         )
 
 
@@ -135,6 +165,7 @@ def seed(ff_client):
     """Create accounts, categories, and transactions; return a dict of their IDs."""
     from firefly_iii_client.api import AccountsApi, TransactionsApi
     from firefly_iii_client.models import (
+        AccountRoleProperty,
         AccountStore,
         ShortAccountTypeProperty,
         TransactionSplitStore,
@@ -150,6 +181,7 @@ def seed(ff_client):
         AccountStore(
             name="IT Checking",
             type=ShortAccountTypeProperty("asset"),
+            account_role=AccountRoleProperty("defaultAsset"),
             currency_code="EUR",
         )
     ).data

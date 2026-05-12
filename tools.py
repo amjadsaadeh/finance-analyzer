@@ -261,7 +261,7 @@ def _build_split_update(split, *, tags=None, category_name=None) -> TransactionS
     """
     return TransactionSplitUpdate(
         description=split.description,
-        date=split.date,
+        var_date=split.var_date,
         amount=str(split.amount),
         type=split.type,
         tags=tags if tags is not None else split.tags,

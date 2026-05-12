@@ -11,6 +11,9 @@ dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: integration tests that require a live Firefly III instance (Docker or env vars)",
+]
 
 [dependency-groups]
 dev = [

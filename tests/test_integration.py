@@ -134,10 +134,11 @@ class TestSSEStreamingFlow:
         mock_interruption = MagicMock()
         mock_interruption.tool_name = "update_transaction_category"
         mock_interruption.name = "update_transaction_category"
-        mock_interruption.arguments = {
+        # ToolApprovalItem.arguments returns a JSON string, not a dict
+        mock_interruption.arguments = json.dumps({
             "transaction_id": "123",
             "category_name": "Groceries",
-        }
+        })
 
         mock_state = MagicMock()
         mock_state.get_interruptions.return_value = [mock_interruption]
@@ -173,15 +174,15 @@ class TestApprovalConfirmFlow:
         mock_interruption = MagicMock()
         mock_interruption.tool_name = "update_transaction_category"
         mock_interruption.name = "update_transaction_category"
-        mock_interruption.arguments = {
+        # ToolApprovalItem.arguments returns a JSON string, not a dict
+        mock_interruption.arguments = json.dumps({
             "transaction_id": "123",
             "category_name": "Groceries",
-        }
+        })
 
         # Store mock state
         mock_state = MagicMock()
         mock_state.to_json.return_value = '{"mock": "data"}'
-        mock_state.starting_agent = finance_agent
         mock_state.get_interruptions.return_value = [mock_interruption]
         mock_state.approve = MagicMock()
 
@@ -192,16 +193,17 @@ class TestApprovalConfirmFlow:
             store.get_or_create_session(session_id="approve-int")
             app.state.session_store = store
 
-            with patch("src.chat.Runner") as mock_runner, \
-                 patch("src.chat.load_state") as mock_load:
-                mock_state_for_load = MagicMock()
-                mock_state_for_load.get_interruptions.return_value = [mock_interruption]
-                mock_state_for_load.approve = MagicMock()
+            mock_state_for_load = MagicMock()
+            mock_state_for_load.get_interruptions.return_value = [mock_interruption]
+            mock_state_for_load.approve = MagicMock()
 
-                mock_run_result = MagicMock()
-                mock_run_result.final_output = "Category updated successfully!"
-                mock_runner.run = AsyncMock(return_value=mock_run_result)
-                mock_load.return_value = mock_state_for_load
+            mock_run_result = MagicMock()
+            mock_run_result.final_output = "Category updated successfully!"
+            mock_runner = MagicMock()
+            mock_runner.run = AsyncMock(return_value=mock_run_result)
+
+            with patch("src.chat.Runner", mock_runner), \
+                 patch("src.chat.load_state", new_callable=AsyncMock, return_value=mock_state_for_load):
 
                 tc = TestClient(app)
                 response = tc.post(
@@ -219,10 +221,11 @@ class TestApprovalConfirmFlow:
         interruption = MagicMock()
         interruption.tool_name = "update_transaction_category"
         interruption.name = "update_transaction_category"
-        interruption.arguments = {
+        # ToolApprovalItem.arguments returns a JSON string, not a dict
+        interruption.arguments = json.dumps({
             "transaction_id": "123",
             "category_name": "Groceries",
-        }
+        })
 
         preview = format_approval_preview([interruption])
         assert preview["count"] == 1
@@ -244,15 +247,15 @@ class TestRejectionFlow:
         mock_interruption = MagicMock()
         mock_interruption.tool_name = "update_transaction_tags"
         mock_interruption.name = "update_transaction_tags"
-        mock_interruption.arguments = {
+        # ToolApprovalItem.arguments returns a JSON string, not a dict
+        mock_interruption.arguments = json.dumps({
             "transaction_id": "456",
             "tags": ["food", "dining"],
-        }
+        })
 
         # Store mock state for rejection
         mock_state = MagicMock()
         mock_state.to_json.return_value = '{"mock": "data"}'
-        mock_state.starting_agent = finance_agent
         mock_state.get_interruptions.return_value = [mock_interruption]
         mock_state.reject = MagicMock()
 
@@ -266,16 +269,17 @@ class TestRejectionFlow:
             store.get_or_create_session(session_id="reject-int")
             app.state.session_store = store
 
-            with patch("src.chat.Runner") as mock_runner, \
-                 patch("src.chat.load_state") as mock_load:
-                mock_state_for_load = MagicMock()
-                mock_state_for_load.get_interruptions.return_value = [mock_interruption]
-                mock_state_for_load.reject = MagicMock()
+            mock_state_for_load = MagicMock()
+            mock_state_for_load.get_interruptions.return_value = [mock_interruption]
+            mock_state_for_load.reject = MagicMock()
 
-                mock_run_result = MagicMock()
-                mock_run_result.final_output = "Understood, I won't make that change."
-                mock_runner.run = AsyncMock(return_value=mock_run_result)
-                mock_load.return_value = mock_state_for_load
+            mock_run_result = MagicMock()
+            mock_run_result.final_output = "Understood, I won't make that change."
+            mock_runner = MagicMock()
+            mock_runner.run = AsyncMock(return_value=mock_run_result)
+
+            with patch("src.chat.Runner", mock_runner), \
+                 patch("src.chat.load_state", new_callable=AsyncMock, return_value=mock_state_for_load):
 
                 tc = TestClient(app)
                 response = tc.post(

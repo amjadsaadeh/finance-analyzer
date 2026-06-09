@@ -9,6 +9,7 @@ produces interruptions.  We:
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -29,6 +30,11 @@ def store_state(state: RunState, session_id: str) -> str:
 
     Returns the state_id (which is the session_id for simplicity —
     only one pending approval per session at a time).
+
+    Note: The FireflyClient context cannot be JSON-serialised, so
+    to_json() stores an empty context.  When restoring, callers must
+    provide the client via ``Runner.run(context=…)`` so the runner
+    can re-inject it.
     """
     state_id = session_id
     # Serialise using the SDK's built-in serialisation
@@ -36,15 +42,18 @@ def store_state(state: RunState, session_id: str) -> str:
     _pending_states[state_id] = {
         "state_json": state_json,
         "stored_at": time.monotonic(),
-        "starting_agent": state.starting_agent,
     }
     return state_id
 
 
-def load_state(state_id: str, starting_agent: Agent) -> RunState | None:
+async def load_state(state_id: str, starting_agent: Agent) -> RunState | None:
     """Load and remove a stored RunState.
 
     Returns None if the state has expired or doesn't exist.
+
+    Note: from_json() is async and must be awaited.
+    The caller must pass the FireflyClient as ``context``
+    to Runner.run() because the context is not persisted.
     """
     entry = _pending_states.pop(state_id, None)
     if entry is None:
@@ -54,7 +63,7 @@ def load_state(state_id: str, starting_agent: Agent) -> RunState | None:
     if age > STATE_TTL_SECONDS:
         return None  # expired
 
-    state = RunState.from_json(
+    state = await RunState.from_json(
         initial_agent=starting_agent,
         state_json=entry["state_json"],
     )
@@ -72,13 +81,17 @@ def format_approval_preview(interruptions: list[ToolApprovalItem]) -> dict[str, 
     previews = []
     for interruption in interruptions:
         tool_name = interruption.tool_name or interruption.name or "unknown"
-        try:
-            arguments = (
-                interruption.arguments
-                if isinstance(interruption.arguments, dict)
-                else {}
-            )
-        except (AttributeError, TypeError):
+        # ToolApprovalItem.arguments is always a JSON string (or None), never a dict.
+        # Parse it into a dict so we can extract individual fields.
+        raw_args = interruption.arguments
+        if isinstance(raw_args, dict):
+            arguments = raw_args
+        elif isinstance(raw_args, str):
+            try:
+                arguments = json.loads(raw_args)
+            except (json.JSONDecodeError, TypeError):
+                arguments = {}
+        else:
             arguments = {}
 
         # Build a natural-language summary

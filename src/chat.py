@@ -191,7 +191,7 @@ async def chat_approve(request: Request, body: ApproveRequest):
             return {"error": "Session not found or expired. Please start a new conversation."}
 
         # Load stored state
-        state = load_state(body.state_id, finance_agent)
+        state = await load_state(body.state_id, finance_agent)
         if state is None:
             return {"error": "Approval state not found or expired. Please try your request again."}
 

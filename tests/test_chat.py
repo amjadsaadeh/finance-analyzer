@@ -137,45 +137,56 @@ class TestApprovalFlow:
         interruption = MagicMock()
         interruption.tool_name = "update_transaction_category"
         interruption.name = "update_transaction_category"
-        interruption.arguments = {
+        # ToolApprovalItem.arguments returns a JSON string, not a dict
+        interruption.arguments = json.dumps({
             "transaction_id": "tx-42",
             "category_name": "Groceries",
-        }
+        })
         result = format_approval_preview([interruption])
         assert result["count"] == 1
         preview = result["previews"][0]
         assert preview["tool_name"] == "update_transaction_category"
         assert "tx-42" in preview["summary"]
         assert "Groceries" in preview["summary"]
+        # arguments should also be available as a parsed dict
+        assert preview["arguments"]["transaction_id"] == "tx-42"
+        assert preview["arguments"]["category_name"] == "Groceries"
 
     def test_format_approval_preview_tags(self):
         """format_approval_preview produces a summary for tag change."""
         interruption = MagicMock()
         interruption.tool_name = "update_transaction_tags"
         interruption.name = "update_transaction_tags"
-        interruption.arguments = {
+        # ToolApprovalItem.arguments returns a JSON string, not a dict
+        interruption.arguments = json.dumps({
             "transaction_id": "tx-99",
             "tags": ["food", "dining"],
-        }
+        })
         result = format_approval_preview([interruption])
         preview = result["previews"][0]
         assert "tx-99" in preview["summary"]
         assert "food" in preview["summary"]
+        assert preview["arguments"]["tags"] == ["food", "dining"]
 
-    def test_store_and_load_state(self):
+    @pytest.mark.asyncio
+    async def test_store_and_load_state(self):
         """State can be stored and retrieved with the starting agent."""
         # Create a mock RunState that can be serialized/deserialized
         mock_state = MagicMock()
         mock_state.to_json.return_value = {"mock": "state_data"}
-        mock_state.starting_agent = finance_agent
 
         state_id = store_state(mock_state, "session-1")
         assert state_id == "session-1"
 
-        loaded = load_state(state_id, finance_agent)
-        assert loaded is not None
+        # Mock RunState.from_json since it requires a real serialized state
+        mock_loaded_state = MagicMock()
+        with patch("src.approval.RunState.from_json", new_callable=AsyncMock, return_value=mock_loaded_state):
+            loaded = await load_state(state_id, finance_agent)
+            assert loaded is not None
+            assert loaded == mock_loaded_state
 
-    def test_load_expired_state(self):
+    @pytest.mark.asyncio
+    async def test_load_expired_state(self):
         """Expired state returns None."""
         mock_state = MagicMock()
         mock_state.to_json.return_value = {"mock": "state_data"}
@@ -188,12 +199,13 @@ class TestApprovalFlow:
 
         _pending_states[state_id]["stored_at"] = time.monotonic() - STATE_TTL_SECONDS - 100
 
-        result = load_state(state_id, finance_agent)
+        result = await load_state(state_id, finance_agent)
         assert result is None
 
-    def test_load_nonexistent_state(self):
+    @pytest.mark.asyncio
+    async def test_load_nonexistent_state(self):
         """Loading a state_id that doesn't exist returns None."""
-        result = load_state("nonexistent", finance_agent)
+        result = await load_state("nonexistent", finance_agent)
         assert result is None
 
     def test_format_approval_preview_unknown_tool(self):
@@ -288,7 +300,6 @@ class TestChatEndpoints:
         # Create mock state and interruption
         mock_state = MagicMock()
         mock_state.to_json.return_value = {"mock": "state"}
-        mock_state.starting_agent = finance_agent
         mock_interruption = MagicMock()
         mock_interruption.tool_name = "update_transaction_category"
         mock_state.get_interruptions.return_value = [mock_interruption]
@@ -309,15 +320,13 @@ class TestChatEndpoints:
             mock_run_result.final_output = "Done"
             mock_runner.run = AsyncMock(return_value=mock_run_result)
 
-            # Load and approve the state  
-            # We need to make the load_state return our mock state, not reconstruct from JSON
-            with patch("src.chat.load_state") as mock_load:
-                # Re-store the state with a mock that tracks approve calls
-                mock_state_for_load = MagicMock()
-                mock_state_for_load.get_interruptions.return_value = [mock_interruption]
-                mock_state_for_load.approve = MagicMock()
-                mock_load.return_value = mock_state_for_load
+            # Load and approve the state
+            # load_state is now async, so mock it with AsyncMock
+            mock_state_for_load = MagicMock()
+            mock_state_for_load.get_interruptions.return_value = [mock_interruption]
+            mock_state_for_load.approve = MagicMock()
 
+            with patch("src.chat.load_state", new_callable=AsyncMock, return_value=mock_state_for_load):
                 tc = TestClient(app)
                 response = tc.post(
                     "/chat/approve",
@@ -333,7 +342,6 @@ class TestChatEndpoints:
         """POST /chat/approve with approved=False calls state.reject()."""
         mock_state = MagicMock()
         mock_state.to_json.return_value = {"mock": "state"}
-        mock_state.starting_agent = finance_agent
         mock_interruption = MagicMock()
         mock_interruption.tool_name = "update_transaction_category"
         mock_state.get_interruptions.return_value = [mock_interruption]
@@ -350,12 +358,11 @@ class TestChatEndpoints:
             mock_run_result.final_output = "Cancelled"
             mock_runner.run = AsyncMock(return_value=mock_run_result)
 
-            with patch("src.chat.load_state") as mock_load:
-                mock_state_for_load = MagicMock()
-                mock_state_for_load.get_interruptions.return_value = [mock_interruption]
-                mock_state_for_load.reject = MagicMock()
-                mock_load.return_value = mock_state_for_load
+            mock_state_for_load = MagicMock()
+            mock_state_for_load.get_interruptions.return_value = [mock_interruption]
+            mock_state_for_load.reject = MagicMock()
 
+            with patch("src.chat.load_state", new_callable=AsyncMock, return_value=mock_state_for_load):
                 tc = TestClient(app)
                 response = tc.post(
                     "/chat/approve",

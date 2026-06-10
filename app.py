@@ -1,9 +1,24 @@
 import gradio as gr
-from agents import Runner
+from agents import Runner, RunConfig
 
 from src.agent import finance_agent
 from src.approval import format_approval_preview
 from tools import FireflyClient
+
+
+def _normalize_history(history: list[dict]) -> list[dict]:
+    """Strip Gradio-added fields and flatten list content back to plain strings."""
+    result = []
+    for msg in history:
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            content = "".join(
+                block.get("text", "")
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+        result.append({"role": msg["role"], "content": content})
+    return result
 
 
 async def _chat_fn(message: str, history: list[dict], firefly_state, pending_state):
@@ -23,9 +38,11 @@ async def _chat_fn(message: str, history: list[dict], firefly_state, pending_sta
             )
             return
 
-    agent_messages = list(history) + [{"role": "user", "content": message}]
+    agent_messages = _normalize_history(history) + [{"role": "user", "content": message}]
     partial = list(agent_messages)
-    result = Runner.run_streamed(finance_agent, agent_messages, context=firefly_state)
+    # Use gpt-4o-mini which supports function tools in chat/completions
+    run_config = RunConfig(model="gpt-4o-mini")
+    result = Runner.run_streamed(finance_agent, agent_messages, context=firefly_state, run_config=run_config)
     assistant_text = ""
 
     async for event in result.stream_events():
@@ -77,7 +94,8 @@ async def _do_approval(history, firefly_state, pending_state, approved: bool):
         else:
             pending_state.reject(interruption)
 
-    result = await Runner.run(finance_agent, pending_state, context=firefly_state)
+    run_config = RunConfig(model="gpt-4o-mini")
+    result = await Runner.run(finance_agent, pending_state, context=firefly_state, run_config=run_config)
     response = str(getattr(result, "final_output", ""))
     return (
         history + [{"role": "assistant", "content": response}],
@@ -97,7 +115,7 @@ async def _on_reject(history, firefly_state, pending_state):
 with gr.Blocks(title="Finance Analyzer") as demo:
     gr.Markdown("# Finance Analyzer\nAsk questions about your Firefly III finances.")
 
-    chatbot = gr.Chatbot(type="messages", height=500, label="Conversation")
+    chatbot = gr.Chatbot(height=500, label="Conversation")
     firefly_st = gr.State(None)
     pending_st = gr.State(None)
 

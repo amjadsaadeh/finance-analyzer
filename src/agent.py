@@ -11,7 +11,7 @@ from typing import Any
 
 from agents import Agent, RunContextWrapper, function_tool
 
-from tools import FireflyClient, dispatch
+from src.tools import FireflyClient, dispatch
 
 
 def _json_serialize(obj: Any) -> str:
@@ -35,7 +35,9 @@ def _json_default(obj: Any) -> str:
 # System prompt
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """\
+current_date = date.today().isoformat()
+
+SYSTEM_PROMPT = f"""\
 You are a personal finance assistant connected to a Firefly III budgeting \
 system. You help users understand their spending, income, and financial patterns.
 
@@ -54,6 +56,9 @@ what you plan to change and wait for user confirmation.
 6. To identify unnecessary or anomalous spending, use get_expense_insights, \
 compare_periods, and list_transactions to find categories or transactions \
 that stand out from normal patterns.\
+
+The current date is {current_date}. Always use this to interpret relative date references like \
+"last month" or "past 7 days".
 """
 
 # ---------------------------------------------------------------------------
